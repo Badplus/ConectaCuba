@@ -1,6 +1,6 @@
 from functools import wraps
 from datetime import datetime
-from flask import render_template,request,redirect,url_for,flash,session,current_app,abort
+from flask import render_template,request,redirect,url_for,flash,session,current_app,abort,jsonify
 from flask_login import login_user,logout_user,login_required,current_user
 from sqlalchemy import or_,and_
 from . import db,MUNICIPIOS,PRODUCTOS
@@ -77,7 +77,8 @@ def register_routes(app):
  def login():
   if request.method=='POST':
    u=User.query.filter_by(phone=request.form['phone'].strip()).first()
-   if not u or not u.check_password(request.form['password']): flash('Credenciales incorrectas.','danger'); return redirect(url_for('login'))
+   if not u or not u.check_password(request.form['password']):
+    flash('Credenciales incorrectas.','danger'); return redirect(url_for('login'))
    login_user(u)
    if not u.approved: return redirect(url_for('pending'))
    return redirect(url_for('dashboard'))
@@ -155,12 +156,41 @@ def register_routes(app):
   if request.method=='POST':
    body=request.form.get('body','').strip()
    if body:
-    db.session.add(Message(sender_id=current_user.id,receiver_id=other.id,body=body))
+    msg=Message(sender_id=current_user.id,receiver_id=other.id,body=body)
+    db.session.add(msg)
     db.session.add(Notification(user_id=other.id,message=f'Nuevo mensaje de {current_user.full_name}.'))
     db.session.commit()
+    if request.headers.get('X-Requested-With')=='XMLHttpRequest':
+     return jsonify({'ok':True,'message':serialize_message(msg)})
    return redirect(url_for('chat',user_id=user_id))
   msgs=Message.query.filter(or_(and_(Message.sender_id==current_user.id,Message.receiver_id==other.id),and_(Message.sender_id==other.id,Message.receiver_id==current_user.id))).order_by(Message.created_at.asc()).all()
   return render_template('chat.html',other=other,msgs=msgs)
+
+ def serialize_message(m):
+  return {
+   'id':m.id,
+   'body':m.body,
+   'sender_id':m.sender_id,
+   'receiver_id':m.receiver_id,
+   'mine':m.sender_id==current_user.id,
+   'created_at':m.created_at.strftime('%d/%m/%Y %H:%M')
+  }
+
+ @app.route('/chat/<int:user_id>/messages')
+ @login_required
+ @approved_required
+ def chat_messages(user_id):
+  other=db.session.get(User,user_id)
+  if not other or not other.approved or other.id==current_user.id: abort(404)
+  after=request.args.get('after',type=int) or 0
+  msgs=Message.query.filter(
+   Message.id>after,
+   or_(
+    and_(Message.sender_id==current_user.id,Message.receiver_id==other.id),
+    and_(Message.sender_id==other.id,Message.receiver_id==current_user.id)
+   )
+  ).order_by(Message.id.asc()).all()
+  return jsonify({'messages':[serialize_message(m) for m in msgs]})
 
  @app.route('/admin/login',methods=['GET','POST'])
  def admin_login():

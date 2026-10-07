@@ -17,7 +17,7 @@ class Notification(db.Model):
  id=db.Column(db.Integer,primary_key=True); user_id=db.Column(db.Integer,db.ForeignKey('user.id'),nullable=False); message=db.Column(db.String(500),nullable=False); listing_id=db.Column(db.Integer); read=db.Column(db.Boolean,default=False); created_at=db.Column(db.DateTime,default=datetime.utcnow)
 
 class Message(db.Model):
- id=db.Column(db.Integer,primary_key=True); sender_id=db.Column(db.Integer,nullable=False); receiver_id=db.Column(db.Integer,nullable=False); body=db.Column(db.Text,nullable=False); created_at=db.Column(db.DateTime,default=datetime.utcnow)
+ id=db.Column(db.Integer,primary_key=True); sender_id=db.Column(db.Integer,nullable=False); receiver_id=db.Column(db.Integer,nullable=False); body=db.Column(db.Text,nullable=False); created_at=db.Column(db.DateTime,default=datetime.utcnow); read_at=db.Column(db.DateTime,nullable=True)
 
 class Setting(db.Model):
  id=db.Column(db.Integer,primary_key=True); commission=db.Column(db.Float,default=5.0)

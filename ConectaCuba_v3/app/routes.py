@@ -42,9 +42,11 @@ def register_routes(app):
  def ctx():
   s=Setting.query.first()
   unread=0
+  unread_chat=0
   if current_user.is_authenticated:
    unread=Notification.query.filter_by(user_id=current_user.id,read=False).count()
-  return dict(MUNICIPIOS=MUNICIPIOS,PRODUCTOS=PRODUCTOS,OWNER_WHATSAPP=current_app.config['OWNER_WHATSAPP'],commission=s.commission if s else 0,unread=unread)
+   unread_chat=Message.query.filter_by(receiver_id=current_user.id,read_at=None).count()
+  return dict(MUNICIPIOS=MUNICIPIOS,PRODUCTOS=PRODUCTOS,OWNER_WHATSAPP=current_app.config['OWNER_WHATSAPP'],commission=s.commission if s else 0,unread=unread,unread_chat=unread_chat)
 
  @app.route('/')
  def index():
@@ -143,7 +145,8 @@ def register_routes(app):
    if partner_id in seen: continue
    partner=db.session.get(User,partner_id)
    if partner:
-    conversations.append({'user':partner,'last_message':m})
+    unread_count=Message.query.filter_by(sender_id=partner_id,receiver_id=current_user.id,read_at=None).count()
+    conversations.append({'user':partner,'last_message':m,'unread_count':unread_count})
     seen.add(partner_id)
   return render_template('chats.html',conversations=conversations)
 
@@ -163,6 +166,13 @@ def register_routes(app):
     if request.headers.get('X-Requested-With')=='XMLHttpRequest':
      return jsonify({'ok':True,'message':serialize_message(msg)})
    return redirect(url_for('chat',user_id=user_id))
+
+  unread_messages=Message.query.filter_by(sender_id=other.id,receiver_id=current_user.id,read_at=None).all()
+  if unread_messages:
+   now=datetime.utcnow()
+   for m in unread_messages: m.read_at=now
+   db.session.commit()
+
   msgs=Message.query.filter(or_(and_(Message.sender_id==current_user.id,Message.receiver_id==other.id),and_(Message.sender_id==other.id,Message.receiver_id==current_user.id))).order_by(Message.created_at.asc()).all()
   return render_template('chat.html',other=other,msgs=msgs)
 
@@ -190,6 +200,13 @@ def register_routes(app):
     and_(Message.sender_id==other.id,Message.receiver_id==current_user.id)
    )
   ).order_by(Message.id.asc()).all()
+
+  incoming_unread=[m for m in msgs if m.sender_id==other.id and m.receiver_id==current_user.id and m.read_at is None]
+  if incoming_unread:
+   now=datetime.utcnow()
+   for m in incoming_unread: m.read_at=now
+   db.session.commit()
+
   return jsonify({'messages':[serialize_message(m) for m in msgs]})
 
  @app.route('/admin/login',methods=['GET','POST'])

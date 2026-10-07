@@ -13,6 +13,7 @@ class User(UserMixin, db.Model):
     municipality = db.Column(db.String(80), nullable=False)
     address = db.Column(db.String(255), nullable=False)
     approved = db.Column(db.Boolean, default=False)
+    is_admin = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     approved_at = db.Column(db.DateTime)
 

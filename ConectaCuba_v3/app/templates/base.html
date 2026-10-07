@@ -14,18 +14,37 @@
 <a href="{{url_for('index')}}">Mercado</a>
 {% if current_user.is_authenticated %}
 <a href="{{url_for('dashboard')}}">Mi panel</a>
-{% if current_user.approved %}<a href="{{url_for('publish')}}">Publicar</a><a id="chat-link" href="{{url_for('chats')}}">Chats<span id="chat-count">{% if unread_chat %} ({{unread_chat}}){% endif %}</span></a>{% endif %}
+{% if current_user.approved %}
+<a href="{{url_for('publish')}}">Publicar</a>
+<a id="chat-link" href="{{url_for('chats')}}">Chats<span id="chat-count">{% if unread_chat %} ({{unread_chat}}){% endif %}</span></a>
+{% endif %}
 <a id="notification-link" href="{{url_for('notifications')}}">Notificaciones<span id="notification-count">{% if unread %} ({{unread}}){% endif %}</span></a>
+{% if current_user.is_admin %}
+<a class="btn secondary" href="{{url_for('admin')}}">Administración</a>
+{% endif %}
 <a href="{{url_for('logout')}}">Salir</a>
-{% else %}<a href="{{url_for('login')}}">Entrar</a><a class="btn primary" href="{{url_for('register')}}">Registrarme</a>{% endif %}
+{% else %}
+<a href="{{url_for('login')}}">Entrar</a>
+<a class="btn primary" href="{{url_for('register')}}">Registrarme</a>
+{% endif %}
 </div></div></nav>
-<div class="container">{% with ms=get_flashed_messages(with_categories=true) %}{% for c,m in ms %}<div class="flash flash-{{c}}">{{m}}</div>{% endfor %}{% endwith %}</div>
+
+<div class="container">
+{% with ms=get_flashed_messages(with_categories=true) %}
+{% for c,m in ms %}<div class="flash flash-{{c}}">{{m}}</div>{% endfor %}
+{% endwith %}
+</div>
+
 {% block content %}{% endblock %}
+
 <div class="container muted" style="padding:30px 0;text-align:center">Comisión actual de la plataforma: {{commission}}%</div>
+
 {% if current_user.is_authenticated %}
 <script>
 (() => {
- const statusUrl="{{url_for('unread_status')}}", n=document.getElementById('notification-count'), c=document.getElementById('chat-count');
+ const statusUrl="{{url_for('unread_status')}}",
+ n=document.getElementById('notification-count'),
+ c=document.getElementById('chat-count');
  let pn={{unread|default(0)}}, pc={{unread_chat|default(0)}};
  function show(el,v){if(el)el.textContent=v>0?` (${v})`:'';}
  async function refresh(){
@@ -43,5 +62,7 @@
  setInterval(refresh,2000);
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
 })();
-</script>{% endif %}
-</body></html>
+</script>
+{% endif %}
+</body>
+</html>

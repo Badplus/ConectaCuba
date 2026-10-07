@@ -29,9 +29,11 @@ def approved_required(fn):
 def admin_required(fn):
     @wraps(fn)
     def wrapped(*a, **k):
-        if not session.get("admin_ok"):
-            return redirect(url_for("admin_login"))
-        return fn(*a, **k)
+        if current_user.is_authenticated and getattr(current_user, "is_admin", False):
+            return fn(*a, **k)
+        if session.get("admin_ok"):
+            return fn(*a, **k)
+        return redirect(url_for("admin_login"))
     return wrapped
 
 def product_name(x):
@@ -250,7 +252,16 @@ def register_routes(app):
             if User.query.filter_by(phone=phone).first():
                 flash("Ese teléfono ya está registrado.", "danger")
                 return redirect(url_for("register"))
-            u = User(full_name=full_name, phone=phone, role=role, province=province, municipality=municipality, address=address, approved=False)
+            u = User(
+                full_name=full_name,
+                phone=phone,
+                role=role,
+                province=province,
+                municipality=municipality,
+                address=address,
+                approved=False,
+                is_admin=False,
+            )
             u.set_password(password)
             db.session.add(u)
             db.session.commit()
@@ -338,7 +349,19 @@ def register_routes(app):
                 flash("Cantidad y precio deben ser válidos.", "danger")
                 return redirect(url_for("publish"))
 
-            item = Listing(kind=kind, product=product, custom_product=custom_product, quantity=quantity, unit=unit, price=price, province=province, municipality=municipality, coverage=coverage, description=description, owner_id=current_user.id)
+            item = Listing(
+                kind=kind,
+                product=product,
+                custom_product=custom_product,
+                quantity=quantity,
+                unit=unit,
+                price=price,
+                province=province,
+                municipality=municipality,
+                coverage=coverage,
+                description=description,
+                owner_id=current_user.id,
+            )
             db.session.add(item)
             db.session.commit()
 
@@ -388,14 +411,12 @@ def register_routes(app):
         n = db.session.get(Notification, notification_id)
         if not n or n.user_id != current_user.id:
             abort(404)
-
         n.read = True
         db.session.commit()
 
         if n.context_listing_a_id and n.context_listing_b_id:
             a = db.session.get(Listing, n.context_listing_a_id)
             b = db.session.get(Listing, n.context_listing_b_id)
-
             if a and b:
                 owners = {a.owner_id, b.owner_id}
                 if current_user.id in owners:
@@ -434,7 +455,6 @@ def register_routes(app):
 
         seen = set()
         conversations = []
-
         for m in msgs:
             partner_id = m.receiver_id if m.sender_id == current_user.id else m.sender_id
             context_key = (m.context_listing_a_id, m.context_listing_b_id)
@@ -597,6 +617,9 @@ def register_routes(app):
 
     @app.route("/admin/login", methods=["GET","POST"])
     def admin_login():
+        if current_user.is_authenticated and getattr(current_user, "is_admin", False):
+            return redirect(url_for("admin"))
+
         if request.method == "POST":
             key = "admin:" + client_ip()
             if login_rate_limited(key):
@@ -619,7 +642,11 @@ def register_routes(app):
     @app.route("/admin")
     @admin_required
     def admin():
-        return render_template("admin.html", users=User.query.order_by(User.created_at.desc()).all(), setting=Setting.query.first())
+        return render_template(
+            "admin.html",
+            users=User.query.order_by(User.created_at.desc()).all(),
+            setting=Setting.query.first(),
+        )
 
     @app.route("/admin/user/<int:user_id>/toggle", methods=["POST"])
     @admin_required
@@ -627,13 +654,20 @@ def register_routes(app):
         u = db.session.get(User, user_id)
         if not u:
             abort(404)
+
+        if u.is_admin:
+            flash("No se puede desactivar una cuenta de administrador desde este botón.", "danger")
+            return redirect(url_for("admin"))
+
         u.approved = not u.approved
         u.approved_at = datetime.utcnow() if u.approved else None
+
         if u.approved:
             db.session.add(Notification(
                 user_id=u.id,
                 message="Tu cuenta ha sido ACTIVADA por el administrador.",
             ))
+
         db.session.commit()
         return redirect(url_for("admin"))
 
@@ -644,6 +678,7 @@ def register_routes(app):
             value = float(request.form["commission"])
         except (TypeError, ValueError, KeyError):
             abort(400)
+
         s = Setting.query.first()
         s.commission = max(0, min(100, value))
         db.session.commit()

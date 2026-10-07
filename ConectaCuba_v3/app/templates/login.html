@@ -1,9 +1,31 @@
 {% extends 'base.html' %}{% block content %}
-<div class="container"><div class="form"><h2>Entrar</h2><form method="post">
+<div class="container"><div class="form"><h2>Entrar</h2>
+<form method="post">
 <input type="hidden" name="_csrf" value="{{csrf_token()}}">
-<label>Teléfono</label><input name="phone" autocomplete="username" required>
-<label style="margin-top:12px">Contraseña</label><input type="password" name="password" autocomplete="current-password" required>
-{% if turnstile_site_key %}<div style="margin-top:16px"><div class="cf-turnstile" data-sitekey="{{turnstile_site_key}}" data-language="es" data-appearance="interaction-only"></div></div>{% endif %}
-<br><button class="btn primary">Entrar</button></form></div></div>
-{% if turnstile_site_key %}<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>{% endif %}
+
+<label>Teléfono</label>
+<input name="phone" autocomplete="username" required>
+
+<label style="margin-top:12px">Contraseña</label>
+<input type="password" name="password" autocomplete="current-password" required>
+
+{% if turnstile_site_key %}
+<div style="margin-top:16px">
+  <label>Verificación de seguridad</label>
+  <div class="cf-turnstile"
+       data-sitekey="{{turnstile_site_key}}"
+       data-language="es"
+       data-appearance="always">
+  </div>
+</div>
+{% endif %}
+
+<br>
+<button class="btn primary">Entrar</button>
+</form>
+</div></div>
+
+{% if turnstile_site_key %}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endif %}
 {% endblock %}

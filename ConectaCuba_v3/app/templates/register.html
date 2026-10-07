@@ -10,13 +10,41 @@
 <div><label>Provincia</label><select id="province" name="province">{% for p in PROVINCIAS %}<option value="{{p}}">{{p}}</option>{% endfor %}</select></div>
 <div><label>Municipio</label><select id="municipality" name="municipality"></select></div>
 <div class="full"><label>Dirección exacta (privada)</label><input name="address" maxlength="255" required></div>
-{% if turnstile_site_key %}<div class="full"><div class="cf-turnstile" data-sitekey="{{turnstile_site_key}}" data-language="es" data-appearance="interaction-only"></div></div>{% endif %}
+
+{% if turnstile_site_key %}
+<div class="full">
+  <label>Verificación de seguridad</label>
+  <div class="cf-turnstile"
+       data-sitekey="{{turnstile_site_key}}"
+       data-language="es"
+       data-appearance="always">
+  </div>
+</div>
+{% endif %}
+
 <div class="full"><button class="btn primary">Registrarme</button></div>
 </form></div></div>
+
 <script>
-const provinces={{PROVINCIAS|tojson}}, p=document.getElementById('province'), m=document.getElementById('municipality');
-function fill(){m.innerHTML='';(provinces[p.value]||[]).forEach(x=>{const o=document.createElement('option');o.value=x;o.textContent=x;m.appendChild(o);});}
-p.addEventListener('change',fill);fill();
+const provinces={{PROVINCIAS|tojson}},
+      p=document.getElementById('province'),
+      m=document.getElementById('municipality');
+
+function fill(){
+  m.innerHTML='';
+  (provinces[p.value]||[]).forEach(x=>{
+    const o=document.createElement('option');
+    o.value=x;
+    o.textContent=x;
+    m.appendChild(o);
+  });
+}
+
+p.addEventListener('change',fill);
+fill();
 </script>
-{% if turnstile_site_key %}<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>{% endif %}
+
+{% if turnstile_site_key %}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endif %}
 {% endblock %}

@@ -1,24 +1,124 @@
 {% extends 'base.html' %}{% block content %}
-<div class="container"><div class="form"><h2>Nueva publicación</h2><form method="post" class="grid">
+<div class="container"><div class="form">
+<h2>Nueva publicación</h2>
+
+<form method="post" class="grid">
 <input type="hidden" name="_csrf" value="{{csrf_token()}}">
-<div><label>Tipo</label><select name="kind"><option value="oferta">VENTA</option><option value="demanda">COMPRA</option></select></div>
-<div><label>Producto</label><select id="product" name="product">{% for p in PRODUCTOS %}<option value="{{p}}">{{p}}</option>{% endfor %}</select></div>
-<div id="custom-wrap" class="full" hidden><label>¿Qué producto es?</label><input id="custom-product" name="custom_product" maxlength="120"></div>
-<div><label>Cantidad</label><input type="number" min="0.001" step="0.001" name="quantity" required></div>
-<div><label>Unidad</label><select name="unit"><option>lb</option><option>kg</option><option>unidad</option><option>saco</option><option>caja</option><option>L</option></select></div>
-<div><label>Precio CUP/unidad</label><input type="number" min="0" step="0.01" name="price" required></div>
-<div><label>Provincia</label><select id="province" name="province">{% for p in PROVINCIAS %}<option value="{{p}}" {% if current_user.province==p %}selected{% endif %}>{{p}}</option>{% endfor %}</select></div>
-<div><label>Municipio</label><select id="municipality" name="municipality"></select></div>
-<div><label>Zona</label><select name="coverage"><option value="municipio">Solo municipio</option><option value="cercanos">Municipios cercanos</option><option value="provincia">Toda la provincia</option></select></div>
-<div class="full"><label>Descripción</label><textarea name="description" maxlength="1200"></textarea></div>
-<div class="full"><button class="btn primary">Publicar y buscar coincidencias</button></div>
-</form></div></div>
+
+<div>
+<label>Tipo</label>
+<select name="kind">
+<option value="oferta">VENTA</option>
+<option value="demanda">COMPRA</option>
+</select>
+</div>
+
+<div>
+<label>Producto</label>
+<select id="product" name="product">
+{% for p in PRODUCTOS %}
+<option value="{{p}}">{{p}}</option>
+{% endfor %}
+</select>
+</div>
+
+<div id="custom-wrap" class="full" hidden>
+<label>¿Qué producto es?</label>
+<input id="custom-product" name="custom_product" maxlength="120">
+</div>
+
+<div>
+<label>Cantidad</label>
+<input type="number" min="0.001" step="0.001" name="quantity" required>
+</div>
+
+<div>
+<label>Unidad</label>
+<select name="unit">
+<option>lb</option>
+<option>kg</option>
+<option>unidad</option>
+<option>saco</option>
+<option>caja</option>
+<option>L</option>
+</select>
+</div>
+
+<div>
+<label>Precio CUP/unidad</label>
+<input type="number" min="0" step="0.01" name="price" required>
+</div>
+
+<div>
+<label>Provincia de la publicación</label>
+<select id="province" name="province">
+{% for p in PROVINCIAS %}
+<option value="{{p}}" {% if current_user.province==p %}selected{% endif %}>{{p}}</option>
+{% endfor %}
+</select>
+</div>
+
+<div>
+<label>Municipio</label>
+<select id="municipality" name="municipality"></select>
+</div>
+
+<div class="full">
+<label>Disponibilidad geográfica</label>
+<select name="coverage">
+<option value="municipio">Solo este municipio</option>
+<option value="cercanos">Municipios cercanos de la misma provincia</option>
+<option value="provincia">Toda esta provincia</option>
+<option value="ambas_provincias">Santiago de Cuba y Holguín</option>
+</select>
+<div class="muted" style="margin-top:6px">
+Si puedes comprar o vender también en la otra provincia, selecciona “Santiago de Cuba y Holguín”.
+</div>
+</div>
+
+<div class="full">
+<label>Descripción</label>
+<textarea name="description" maxlength="1200"></textarea>
+</div>
+
+<div class="full">
+<button class="btn primary">Publicar y buscar coincidencias</button>
+</div>
+</form>
+</div></div>
+
 <script>
-const provinces={{PROVINCIAS|tojson}}, p=document.getElementById('province'), m=document.getElementById('municipality'), preferred={{current_user.municipality|tojson}};
-function fill(){m.innerHTML='';(provinces[p.value]||[]).forEach(x=>{const o=document.createElement('option');o.value=x;o.textContent=x;if(x===preferred)o.selected=true;m.appendChild(o);});}
-p.addEventListener('change',fill);fill();
-const prod=document.getElementById('product'), wrap=document.getElementById('custom-wrap'), ci=document.getElementById('custom-product');
-function toggle(){const other=prod.value==='Otro';wrap.hidden=!other;ci.required=other;if(!other)ci.value='';}
-prod.addEventListener('change',toggle);toggle();
+const provinces={{PROVINCIAS|tojson}},
+      p=document.getElementById('province'),
+      m=document.getElementById('municipality'),
+      preferred={{current_user.municipality|tojson}};
+
+function fill(){
+  m.innerHTML='';
+  (provinces[p.value]||[]).forEach(x=>{
+    const o=document.createElement('option');
+    o.value=x;
+    o.textContent=x;
+    if(x===preferred) o.selected=true;
+    m.appendChild(o);
+  });
+}
+
+p.addEventListener('change',fill);
+fill();
+
+const prod=document.getElementById('product'),
+      wrap=document.getElementById('custom-wrap'),
+      ci=document.getElementById('custom-product');
+
+function toggle(){
+  const other=prod.value==='Otro';
+  wrap.hidden=!other;
+  ci.required=other;
+  if(!other) ci.value='';
+}
+
+prod.addEventListener('change',toggle);
+toggle();
 </script>
 {% endblock %}

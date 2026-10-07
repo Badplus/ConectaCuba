@@ -1,14 +1,16 @@
 {% extends 'base.html' %}{% block content %}
 <div class="container"><h2>Notificaciones</h2><div class="list">
 {% for n in notes %}
-{% if n.listing_id %}
-<a class="row" href="{{url_for('detail',listing_id=n.listing_id)}}" style="text-decoration:none;color:inherit">
-<div>{{n.message}}<div class="muted">{{n.created_at.strftime('%d/%m/%Y %H:%M')}}</div></div>
-<div>Ver publicación →</div>
+<a class="row" href="{{url_for('open_notification',notification_id=n.id)}}" style="text-decoration:none;color:inherit">
+<div>
+  {% if n.context_listing_a_id and n.context_listing_b_id %}
+  <span class="pill">COINCIDENCIA</span>
+  {% endif %}
+  <div style="margin-top:6px">{{n.message}}</div>
+  <div class="muted">{{n.created_at.strftime('%d/%m/%Y %H:%M')}}</div>
+</div>
+<div>{% if n.context_listing_a_id and n.context_listing_b_id %}Abrir conversación →{% elif n.listing_id %}Ver publicación →{% else %}Abrir →{% endif %}</div>
 </a>
-{% else %}
-<div class="row"><div>{{n.message}}<div class="muted">{{n.created_at.strftime('%d/%m/%Y %H:%M')}}</div></div></div>
-{% endif %}
 {% else %}<div class="card">No hay notificaciones.</div>{% endfor %}
 </div></div>
 {% endblock %}

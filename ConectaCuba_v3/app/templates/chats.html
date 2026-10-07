@@ -5,13 +5,16 @@
 <div>
 <b>{{c.user.full_name}}{% if c.unread_count %} <span class="pill">{{c.unread_count}} nuevo{% if c.unread_count != 1 %}s{% endif %}</span>{% endif %}</b>
 <div class="muted">{{c.user.role|capitalize}} · {{c.user.municipality}}, {{c.user.province}}</div>
+
 {% if c.context_a and c.context_b %}
 <div class="chat-context-mini">
+<span class="pill">COINCIDENCIA</span>
 <strong>{{c.context_a.display_product}}</strong> · {{c.context_a.display_kind}} ↔ {{c.context_b.display_kind}}
 </div>
 {% else %}
 <div class="muted">Conversación general</div>
 {% endif %}
+
 <div>{% if c.unread_count %}<strong>{{c.last_message.body[:80]}}</strong>{% else %}{{c.last_message.body[:80]}}{% endif %}{% if c.last_message.body|length > 80 %}…{% endif %}</div>
 </div>
 <div class="muted">{{c.last_message.created_at.strftime('%d/%m %H:%M')}}</div>

@@ -10,25 +10,40 @@
 
 {% if context_a and context_b %}
 <div class="match-context">
-<div class="muted">CONVERSACIÓN SOBRE ESTA COINCIDENCIA</div>
-<h3>{{context_a.display_product}}</h3>
-<div><b>{{context_a.display_kind}}</b>: {{context_a.quantity}} {{context_a.unit}} · {{context_a.price}} CUP · {{context_a.municipality}}</div>
-<div><b>{{context_b.display_kind}}</b>: {{context_b.quantity}} {{context_b.unit}} · {{context_b.price}} CUP · {{context_b.municipality}}</div>
+<div class="pill">COINCIDENCIA ACTUAL</div>
+<h3 style="margin-bottom:8px">{{context_a.display_product}}</h3>
+<div><b>Publicación 1 — {{context_a.display_kind}}</b>: {{context_a.quantity}} {{context_a.unit}} · {{context_a.price}} CUP · {{context_a.municipality}}, {{context_a.province}}</div>
+<div style="margin-top:5px"><b>Publicación 2 — {{context_b.display_kind}}</b>: {{context_b.quantity}} {{context_b.unit}} · {{context_b.price}} CUP · {{context_b.municipality}}, {{context_b.province}}</div>
+<div class="muted" style="margin-top:8px">Todos los mensajes de este chat pertenecen únicamente a esta coincidencia.</div>
 </div>
 {% endif %}
 
 <div id="messages" style="margin-top:20px;max-height:60vh;overflow-y:auto;padding-right:4px">
+{% if context_a and context_b %}
+<div class="conversation-context-label">
+<strong>Inicio de conversación:</strong> {{context_a.display_kind}} de {{context_a.display_product}} ↔ {{context_b.display_kind}} de {{context_b.display_product}}
+</div>
+{% endif %}
+
 {% for m in msgs %}
 <div class="msg {{'mine' if m.sender_id==current_user.id else 'theirs'}}" data-message-id="{{m.id}}">
 <div class="message-body">{{m.body}}</div>
 <div class="muted">{{m.created_at.strftime('%d/%m/%Y %H:%M')}}</div>
 </div>
-{% else %}<div id="empty-chat" class="muted">Aún no hay mensajes.</div>{% endfor %}
+{% else %}
+<div id="empty-chat" class="muted">
+{% if context_a and context_b %}
+Aún no hay mensajes sobre esta coincidencia.
+{% else %}
+Aún no hay mensajes.
+{% endif %}
+</div>
+{% endfor %}
 </div>
 
 <form id="chat-form" method="post" style="margin-top:20px">
 <input type="hidden" id="csrf-token" name="_csrf" value="{{csrf_token()}}">
-<input id="message-input" name="body" maxlength="2000" placeholder="Escribe un mensaje" autocomplete="off" required>
+<input id="message-input" name="body" maxlength="2000" placeholder="{% if context_a %}Escribe sobre {{context_a.display_product}}{% else %}Escribe un mensaje{% endif %}" autocomplete="off" required>
 <br><br><button id="send-button" class="btn primary">Enviar</button>
 </form>
 </div></div>
@@ -56,7 +71,8 @@
  async function poll(){
   if(polling||document.hidden)return;polling=true;
   try{
-   const r=await fetch(`${url}&after=${last}`,{headers:{Accept:'application/json'},cache:'no-store'});
+   const separator=url.includes('?')?'&':'?';
+   const r=await fetch(`${url}${separator}after=${last}`,{headers:{Accept:'application/json'},cache:'no-store'});
    if(r.ok){const d=await r.json();(d.messages||[]).forEach(add);}
   }finally{polling=false;}
  }

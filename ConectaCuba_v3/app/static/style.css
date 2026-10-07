@@ -71,3 +71,13 @@ th,td{padding:9px;border-bottom:1px solid #eee;text-align:left;font-size:13px}
   .hero h1{font-size:36px}
   .row{flex-direction:column}
 }
+.msg-delete{
+  border:0;
+  background:transparent;
+  padding:0;
+  color:#8d2030;
+  font-size:11px;
+  cursor:pointer;
+  text-decoration:underline;
+}
+.msg-delete:hover{opacity:.75}

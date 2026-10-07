@@ -22,11 +22,13 @@ def admin_required(fn):
 
 def product_name(x): return x.custom_product if x.product=='Otro' and x.custom_product else x.product
 def norm(s): return ' '.join((s or '').strip().lower().split())
+
 def matches_for(item):
  out=[]
  for o in Listing.query.filter(Listing.id!=item.id,Listing.active.is_(True),Listing.kind!=item.kind).all():
   if not o.owner.approved or norm(product_name(o))!=norm(product_name(item)): continue
-  offer=item if item.kind=='oferta' else o; demand=o if item.kind=='oferta' else item
+  offer=item if item.kind=='oferta' else o
+  demand=o if item.kind=='oferta' else item
   geo=3 if offer.municipality==demand.municipality else (2 if 'provincia' in [offer.coverage,demand.coverage] else 1 if 'cercanos' in [offer.coverage,demand.coverage] else 0)
   if geo==0: continue
   qty=2 if offer.quantity>=demand.quantity else 1 if offer.quantity>=demand.quantity*.5 else 0
@@ -38,8 +40,10 @@ def matches_for(item):
 def register_routes(app):
  @app.context_processor
  def ctx():
-  s=Setting.query.first(); unread=0
-  if current_user.is_authenticated: unread=Notification.query.filter_by(user_id=current_user.id,read=False).count()
+  s=Setting.query.first()
+  unread=0
+  if current_user.is_authenticated:
+   unread=Notification.query.filter_by(user_id=current_user.id,read=False).count()
   return dict(MUNICIPIOS=MUNICIPIOS,PRODUCTOS=PRODUCTOS,OWNER_WHATSAPP=current_app.config['OWNER_WHATSAPP'],commission=s.commission if s else 0,unread=unread)
 
  @app.route('/')
@@ -55,8 +59,11 @@ def register_routes(app):
  def register():
   if request.method=='POST':
    d=request.form; phone=d.get('phone','').strip()
-   if User.query.filter_by(phone=phone).first(): flash('Ese teléfono ya está registrado.','danger'); return redirect(url_for('register'))
-   u=User(full_name=d['full_name'].strip(),phone=phone,role=d['role'],municipality=d['municipality'],address=d['address'].strip(),approved=False); u.set_password(d['password']); db.session.add(u); db.session.commit(); login_user(u); flash('Registro completado. Solicita tu activación por WhatsApp.','success'); return redirect(url_for('pending'))
+   if User.query.filter_by(phone=phone).first():
+    flash('Ese teléfono ya está registrado.','danger'); return redirect(url_for('register'))
+   u=User(full_name=d['full_name'].strip(),phone=phone,role=d['role'],municipality=d['municipality'],address=d['address'].strip(),approved=False)
+   u.set_password(d['password']); db.session.add(u); db.session.commit(); login_user(u)
+   flash('Registro completado. Solicita tu activación por WhatsApp.','success'); return redirect(url_for('pending'))
   return render_template('register.html')
 
  @app.route('/pending')
@@ -84,16 +91,21 @@ def register_routes(app):
  @login_required
  def dashboard():
   if not current_user.approved: return redirect(url_for('pending'))
-  ls=Listing.query.filter_by(owner_id=current_user.id).order_by(Listing.created_at.desc()).all(); notes=Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).limit(8).all(); return render_template('dashboard.html',listings=ls,notes=notes)
+  ls=Listing.query.filter_by(owner_id=current_user.id).order_by(Listing.created_at.desc()).all()
+  notes=Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).limit(8).all()
+  return render_template('dashboard.html',listings=ls,notes=notes)
 
  @app.route('/publish',methods=['GET','POST'])
  @login_required
  @approved_required
  def publish():
   if request.method=='POST':
-   d=request.form; item=Listing(kind=d['kind'],product=d['product'],custom_product=d.get('custom_product') or None,quantity=float(d['quantity']),unit=d['unit'],price=float(d['price']),municipality=d['municipality'],coverage=d['coverage'],description=d.get('description',''),owner_id=current_user.id); db.session.add(item); db.session.commit()
+   d=request.form
+   item=Listing(kind=d['kind'],product=d['product'],custom_product=d.get('custom_product') or None,quantity=float(d['quantity']),unit=d['unit'],price=float(d['price']),municipality=d['municipality'],coverage=d['coverage'],description=d.get('description',''),owner_id=current_user.id)
+   db.session.add(item); db.session.commit()
    for other,score,level in matches_for(item)[:10]:
-    db.session.add(Notification(user_id=current_user.id,listing_id=other.id,message=f'{level}: {product_name(other)} en {other.municipality}.')); db.session.add(Notification(user_id=other.owner_id,listing_id=item.id,message=f'{level}: nueva coincidencia de {product_name(item)} en {item.municipality}.'))
+    db.session.add(Notification(user_id=current_user.id,listing_id=other.id,message=f'{level}: {product_name(other)} en {other.municipality}.'))
+    db.session.add(Notification(user_id=other.owner_id,listing_id=item.id,message=f'{level}: nueva coincidencia de {product_name(item)} en {item.municipality}.'))
    db.session.commit(); return redirect(url_for('matches',listing_id=item.id))
   return render_template('publish.html')
 
@@ -119,6 +131,21 @@ def register_routes(app):
   for n in notes: n.read=True
   db.session.commit(); return render_template('notifications.html',notes=notes)
 
+ @app.route('/chats')
+ @login_required
+ @approved_required
+ def chats():
+  msgs=Message.query.filter(or_(Message.sender_id==current_user.id,Message.receiver_id==current_user.id)).order_by(Message.created_at.desc()).all()
+  seen=set(); conversations=[]
+  for m in msgs:
+   partner_id=m.receiver_id if m.sender_id==current_user.id else m.sender_id
+   if partner_id in seen: continue
+   partner=db.session.get(User,partner_id)
+   if partner:
+    conversations.append({'user':partner,'last_message':m})
+    seen.add(partner_id)
+  return render_template('chats.html',conversations=conversations)
+
  @app.route('/chat/<int:user_id>',methods=['GET','POST'])
  @login_required
  @approved_required
@@ -127,18 +154,24 @@ def register_routes(app):
   if not other or not other.approved or other.id==current_user.id: abort(404)
   if request.method=='POST':
    body=request.form.get('body','').strip()
-   if body: db.session.add(Message(sender_id=current_user.id,receiver_id=other.id,body=body)); db.session.add(Notification(user_id=other.id,message=f'Nuevo mensaje de {current_user.full_name}.')); db.session.commit()
+   if body:
+    db.session.add(Message(sender_id=current_user.id,receiver_id=other.id,body=body))
+    db.session.add(Notification(user_id=other.id,message=f'Nuevo mensaje de {current_user.full_name}.'))
+    db.session.commit()
    return redirect(url_for('chat',user_id=user_id))
-  msgs=Message.query.filter(or_(and_(Message.sender_id==current_user.id,Message.receiver_id==other.id),and_(Message.sender_id==other.id,Message.receiver_id==current_user.id))).order_by(Message.created_at.asc()).all(); return render_template('chat.html',other=other,msgs=msgs)
+  msgs=Message.query.filter(or_(and_(Message.sender_id==current_user.id,Message.receiver_id==other.id),and_(Message.sender_id==other.id,Message.receiver_id==current_user.id))).order_by(Message.created_at.asc()).all()
+  return render_template('chat.html',other=other,msgs=msgs)
 
  @app.route('/admin/login',methods=['GET','POST'])
  def admin_login():
-  if request.method=='POST' and request.form.get('password')==current_app.config['ADMIN_PASSWORD']: session['admin_ok']=True; return redirect(url_for('admin'))
+  if request.method=='POST' and request.form.get('password')==current_app.config['ADMIN_PASSWORD']:
+   session['admin_ok']=True; return redirect(url_for('admin'))
   return render_template('admin_login.html')
 
  @app.route('/admin')
  @admin_required
- def admin(): return render_template('admin.html',users=User.query.order_by(User.created_at.desc()).all(),setting=Setting.query.first())
+ def admin():
+  return render_template('admin.html',users=User.query.order_by(User.created_at.desc()).all(),setting=Setting.query.first())
 
  @app.route('/admin/user/<int:user_id>/toggle',methods=['POST'])
  @admin_required

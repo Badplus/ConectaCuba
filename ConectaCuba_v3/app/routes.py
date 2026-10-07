@@ -82,13 +82,11 @@ def verify_turnstile():
     token = request.form.get("cf-turnstile-response", "")
     if not token:
         return False
-
     payload = urllib.parse.urlencode({
         "secret": secret,
         "response": token,
         "remoteip": client_ip(),
     }).encode()
-
     try:
         req = urllib.request.Request(
             "https://challenges.cloudflare.com/turnstile/v0/siteverify",
@@ -131,6 +129,39 @@ def matches_for(item):
         score = geo + qty + price
         out.append((o, score, "Coincidencia excelente" if score >= 7 else "Buena coincidencia" if score >= 5 else "Coincidencia posible"))
     return sorted(out, key=lambda x: x[1], reverse=True)
+
+def context_pair_ids(a_id, b_id):
+    if not a_id or not b_id:
+        return (None, None)
+    return tuple(sorted((int(a_id), int(b_id))))
+
+def resolve_chat_context(other_user, a_id=None, b_id=None):
+    a_id, b_id = context_pair_ids(a_id, b_id)
+    if not a_id or not b_id:
+        return None, None
+
+    a = db.session.get(Listing, a_id)
+    b = db.session.get(Listing, b_id)
+    if not a or not b:
+        abort(404)
+
+    owners = {a.owner_id, b.owner_id}
+    if owners != {current_user.id, other_user.id}:
+        abort(403)
+
+    return a, b
+
+def message_context_filter(a_id, b_id):
+    a_id, b_id = context_pair_ids(a_id, b_id)
+    if a_id and b_id:
+        return and_(
+            Message.context_listing_a_id == a_id,
+            Message.context_listing_b_id == b_id,
+        )
+    return and_(
+        Message.context_listing_a_id.is_(None),
+        Message.context_listing_b_id.is_(None),
+    )
 
 def register_routes(app):
     @app.context_processor
@@ -311,9 +342,20 @@ def register_routes(app):
             db.session.add(item)
             db.session.commit()
 
+            # IMPORTANTE:
+            # Cada nueva publicación se compara contra TODAS las publicaciones activas.
+            # Así una publicación antigua también recibe aviso cuando aparece una coincidencia futura.
             for other, score, level in matches_for(item)[:10]:
-                db.session.add(Notification(user_id=current_user.id, listing_id=other.id, message=f"{level}: {product_name(other)} en {other.municipality}, {other.province}."))
-                db.session.add(Notification(user_id=other.owner_id, listing_id=item.id, message=f"{level}: nueva coincidencia de {product_name(item)} en {item.municipality}, {item.province}."))
+                db.session.add(Notification(
+                    user_id=current_user.id,
+                    listing_id=other.id,
+                    message=f"{level} para tu {item.display_kind.lower()} de {product_name(item)}: {other.display_kind.lower()} en {other.municipality}, {other.province}.",
+                ))
+                db.session.add(Notification(
+                    user_id=other.owner_id,
+                    listing_id=item.id,
+                    message=f"{level} para tu {other.display_kind.lower()} de {product_name(other)}: nueva {item.display_kind.lower()} en {item.municipality}, {item.province}.",
+                ))
             db.session.commit()
             return redirect(url_for("matches", listing_id=item.id))
         return render_template("publish.html")
@@ -339,6 +381,9 @@ def register_routes(app):
     def notifications():
         if not current_user.approved:
             return redirect(url_for("pending"))
+
+        # Aislamiento estricto por usuario:
+        # cada cuenta solo consulta notificaciones con su propio user_id.
         notes = Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).all()
         for n in notes:
             n.read = True
@@ -349,17 +394,46 @@ def register_routes(app):
     @login_required
     @approved_required
     def chats():
-        msgs = Message.query.filter(or_(Message.sender_id == current_user.id, Message.receiver_id == current_user.id)).order_by(Message.created_at.desc()).all()
-        seen, conversations = set(), []
+        msgs = Message.query.filter(or_(
+            Message.sender_id == current_user.id,
+            Message.receiver_id == current_user.id,
+        )).order_by(Message.created_at.desc()).all()
+
+        seen = set()
+        conversations = []
+
         for m in msgs:
             partner_id = m.receiver_id if m.sender_id == current_user.id else m.sender_id
-            if partner_id in seen:
+            context_key = (m.context_listing_a_id, m.context_listing_b_id)
+            key = (partner_id, context_key)
+            if key in seen:
                 continue
+
             partner = db.session.get(User, partner_id)
-            if partner:
-                unread_count = Message.query.filter_by(sender_id=partner_id, receiver_id=current_user.id, read_at=None).count()
-                conversations.append({"user": partner, "last_message": m, "unread_count": unread_count})
-                seen.add(partner_id)
+            if not partner:
+                continue
+
+            unread_query = Message.query.filter_by(
+                sender_id=partner_id,
+                receiver_id=current_user.id,
+                read_at=None,
+                context_listing_a_id=m.context_listing_a_id,
+                context_listing_b_id=m.context_listing_b_id,
+            )
+            unread_count = unread_query.count()
+
+            context_a = db.session.get(Listing, m.context_listing_a_id) if m.context_listing_a_id else None
+            context_b = db.session.get(Listing, m.context_listing_b_id) if m.context_listing_b_id else None
+
+            conversations.append({
+                "user": partner,
+                "last_message": m,
+                "unread_count": unread_count,
+                "context_a": context_a,
+                "context_b": context_b,
+            })
+            seen.add(key)
+
         return render_template("chats.html", conversations=conversations)
 
     @app.route("/chat/<int:user_id>", methods=["GET","POST"])
@@ -370,32 +444,83 @@ def register_routes(app):
         if not other or not other.approved or other.id == current_user.id:
             abort(404)
 
+        a_id = request.args.get("a", type=int)
+        b_id = request.args.get("b", type=int)
+        a_id, b_id = context_pair_ids(a_id, b_id)
+        context_a, context_b = resolve_chat_context(other, a_id, b_id)
+
         if request.method == "POST":
             body = clean_text(request.form.get("body"), 2000)
             if body:
-                msg = Message(sender_id=current_user.id, receiver_id=other.id, body=body)
+                msg = Message(
+                    sender_id=current_user.id,
+                    receiver_id=other.id,
+                    body=body,
+                    context_listing_a_id=a_id,
+                    context_listing_b_id=b_id,
+                )
                 db.session.add(msg)
-                db.session.add(Notification(user_id=other.id, message=f"Nuevo mensaje de {current_user.full_name}."))
+
+                if context_a and context_b:
+                    product = product_name(context_a)
+                    db.session.add(Notification(
+                        user_id=other.id,
+                        listing_id=context_a.id if context_a.owner_id == current_user.id else context_b.id,
+                        message=f"Nuevo mensaje de {current_user.full_name} sobre la coincidencia de {product}.",
+                    ))
+                else:
+                    db.session.add(Notification(
+                        user_id=other.id,
+                        message=f"Nuevo mensaje de {current_user.full_name}.",
+                    ))
+
                 db.session.commit()
+
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return jsonify({"ok": True, "message": serialize_message(msg)})
-            return redirect(url_for("chat", user_id=user_id))
 
-        unread_messages = Message.query.filter_by(sender_id=other.id, receiver_id=current_user.id, read_at=None).all()
+            return redirect(url_for("chat", user_id=user_id, a=a_id, b=b_id))
+
+        unread_messages = Message.query.filter(
+            Message.sender_id == other.id,
+            Message.receiver_id == current_user.id,
+            Message.read_at.is_(None),
+            message_context_filter(a_id, b_id),
+        ).all()
+
         if unread_messages:
             now = datetime.utcnow()
             for m in unread_messages:
                 m.read_at = now
             db.session.commit()
 
-        msgs = Message.query.filter(or_(
-            and_(Message.sender_id == current_user.id, Message.receiver_id == other.id),
-            and_(Message.sender_id == other.id, Message.receiver_id == current_user.id),
-        )).order_by(Message.created_at.asc()).all()
-        return render_template("chat.html", other=other, msgs=msgs)
+        msgs = Message.query.filter(
+            or_(
+                and_(Message.sender_id == current_user.id, Message.receiver_id == other.id),
+                and_(Message.sender_id == other.id, Message.receiver_id == current_user.id),
+            ),
+            message_context_filter(a_id, b_id),
+        ).order_by(Message.created_at.asc()).all()
+
+        return render_template(
+            "chat.html",
+            other=other,
+            msgs=msgs,
+            context_a=context_a,
+            context_b=context_b,
+            context_a_id=a_id,
+            context_b_id=b_id,
+        )
 
     def serialize_message(m):
-        return {"id": m.id, "body": m.body, "sender_id": m.sender_id, "receiver_id": m.receiver_id, "mine": m.sender_id == current_user.id, "created_at": m.created_at.strftime("%d/%m/%Y %H:%M")}
+        return {
+            "id": m.id,
+            "body": m.body,
+            "sender_id": m.sender_id,
+            "receiver_id": m.receiver_id,
+            "mine": m.sender_id == current_user.id,
+            "created_at": m.created_at.strftime("%d/%m/%Y %H:%M"),
+        }
 
     @app.route("/chat/<int:user_id>/messages")
     @login_required
@@ -404,13 +529,20 @@ def register_routes(app):
         other = db.session.get(User, user_id)
         if not other or not other.approved or other.id == current_user.id:
             abort(404)
+
+        a_id = request.args.get("a", type=int)
+        b_id = request.args.get("b", type=int)
+        a_id, b_id = context_pair_ids(a_id, b_id)
+        resolve_chat_context(other, a_id, b_id)
+
         after = request.args.get("after", type=int) or 0
         msgs = Message.query.filter(
             Message.id > after,
             or_(
                 and_(Message.sender_id == current_user.id, Message.receiver_id == other.id),
                 and_(Message.sender_id == other.id, Message.receiver_id == current_user.id),
-            )
+            ),
+            message_context_filter(a_id, b_id),
         ).order_by(Message.id.asc()).all()
 
         incoming = [m for m in msgs if m.sender_id == other.id and m.receiver_id == current_user.id and m.read_at is None]
@@ -419,6 +551,7 @@ def register_routes(app):
             for m in incoming:
                 m.read_at = now
             db.session.commit()
+
         return jsonify({"messages": [serialize_message(m) for m in msgs]})
 
     @app.route("/admin/login", methods=["GET","POST"])

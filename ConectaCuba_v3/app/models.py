@@ -62,6 +62,8 @@ class Message(db.Model):
     body = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     read_at = db.Column(db.DateTime, nullable=True)
+    context_listing_a_id = db.Column(db.Integer, nullable=True)
+    context_listing_b_id = db.Column(db.Integer, nullable=True)
 
 class Setting(db.Model):
     id = db.Column(db.Integer, primary_key=True)

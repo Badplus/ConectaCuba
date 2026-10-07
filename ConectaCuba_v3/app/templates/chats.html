@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% block content %}
+<div class="container"><h2>Mis chats</h2><div class="list">
+{% for c in conversations %}
+<a class="row" href="{{url_for('chat',user_id=c.user.id)}}" style="text-decoration:none;color:inherit">
+<div><b>{{c.user.full_name}}</b><div class="muted">{{c.user.role|capitalize}} · {{c.user.municipality}}</div>
+<div>{{c.last_message.body[:80]}}{% if c.last_message.body|length > 80 %}…{% endif %}</div></div>
+<div class="muted">{{c.last_message.created_at.strftime('%d/%m %H:%M')}}</div></a>
+{% else %}<div class="card">Todavía no tienes conversaciones. Abre una publicación o coincidencia y pulsa “Chat”.</div>{% endfor %}
+</div></div>{% endblock %}

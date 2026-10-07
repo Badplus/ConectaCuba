@@ -1,10 +1,1 @@
-{% extends 'base.html' %}{% block content %}
-<div class="container"><h2>Mis chats</h2><div class="list">
-{% for c in conversations %}
-<a class="row" href="{{url_for('chat',user_id=c.user.id)}}" style="text-decoration:none;color:inherit">
-<div><b>{{c.user.full_name}}{% if c.unread_count %} <span class="pill">{{c.unread_count}} nuevo{% if c.unread_count != 1 %}s{% endif %}</span>{% endif %}</b>
-<div class="muted">{{c.user.role|capitalize}} · {{c.user.municipality}}</div>
-<div>{% if c.unread_count %}<strong>{{c.last_message.body[:80]}}</strong>{% else %}{{c.last_message.body[:80]}}{% endif %}{% if c.last_message.body|length > 80 %}…{% endif %}</div></div>
-<div class="muted">{{c.last_message.created_at.strftime('%d/%m %H:%M')}}</div></a>
-{% else %}<div class="card">Todavía no tienes conversaciones. Abre una publicación o coincidencia y pulsa “Chat”.</div>{% endfor %}
-</div></div>{% endblock %}
+{% extends 'base.html' %}{% block content %}<div class="container"><h2>Mis chats</h2><div class="list">{% for c in conversations %}<a class="row" href="{{url_for('chat',user_id=c.user.id)}}" style="text-decoration:none;color:inherit"><div><b>{{c.user.full_name}}{% if c.unread_count %} <span class="pill">{{c.unread_count}} nuevo{% if c.unread_count != 1 %}s{% endif %}</span>{% endif %}</b><div class="muted">{{c.user.role|capitalize}} · {{c.user.municipality}}, {{c.user.province}}</div><div>{% if c.unread_count %}<strong>{{c.last_message.body[:80]}}</strong>{% else %}{{c.last_message.body[:80]}}{% endif %}{% if c.last_message.body|length > 80 %}…{% endif %}</div></div><div class="muted">{{c.last_message.created_at.strftime('%d/%m %H:%M')}}</div></a>{% else %}<div class="card">Todavía no tienes conversaciones.</div>{% endfor %}</div></div>{% endblock %}

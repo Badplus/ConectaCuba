@@ -1,1 +1,14 @@
-{% extends 'base.html' %}{% block content %}<section class="hero"><div class="container"><h1>ConectaCuba</h1><p>Conectamos productores, vendedores y compradores en Santiago de Cuba.</p><p><b>Acceso:</b> registro → teléfono verificado → aprobación manual del dueño.</p></div></section><div class="container"><div class="card"><form class="filters"><input name="q" value="{{q}}" placeholder="Buscar producto"><select name="kind"><option value="">Oferta y demanda</option><option value="oferta">Ofertas</option><option value="demanda">Demandas</option></select><select name="municipality"><option value="">Todos los municipios</option>{% for m in MUNICIPIOS %}<option>{{m}}</option>{% endfor %}</select><button class="btn primary">Buscar</button></form></div><div class="list">{% for x in listings %}<a class="row" href="{{url_for('detail',listing_id=x.id)}}"><div><span class="pill {{'offer' if x.kind=='oferta' else 'demand'}}">{{x.kind|upper}}</span> <b>{{x.display_product}}</b><div class="muted">{{x.quantity}} {{x.unit}} · {{'%.2f'|format(x.price)}} CUP · {{x.municipality}}</div></div></a>{% else %}<div class="card">No hay publicaciones.</div>{% endfor %}</div></div>{% endblock %}
+{% extends 'base.html' %}{% block content %}
+<section class="hero"><div class="container"><h1>ConectaCuba</h1><p>Conectamos productores, vendedores y compradores en Santiago de Cuba y Holguín.</p></div></section>
+<div class="container"><div class="card"><form class="filters">
+<input name="q" value="{{q}}" placeholder="Buscar producto">
+<select name="kind"><option value="">Compra y venta</option><option value="oferta" {% if kind=='oferta' %}selected{% endif %}>Ventas</option><option value="demanda" {% if kind=='demanda' %}selected{% endif %}>Compras</option></select>
+<select id="fp" name="province"><option value="">Todas las provincias</option>{% for p in PROVINCIAS %}<option value="{{p}}" {% if province==p %}selected{% endif %}>{{p}}</option>{% endfor %}</select>
+<select id="fm" name="municipality" data-current="{{municipality}}"><option value="">Todos los municipios</option></select>
+<button class="btn primary">Buscar</button></form></div>
+<div class="list">{% for x in listings %}<a class="row" href="{{url_for('detail',listing_id=x.id)}}"><div><span class="pill {{'offer' if x.kind=='oferta' else 'demand'}}">{{x.display_kind|upper}}</span> <b>{{x.display_product}}</b><div class="muted">{{x.quantity}} {{x.unit}} · {{'%.2f'|format(x.price)}} CUP · {{x.municipality}}, {{x.province}}</div></div></a>{% else %}<div class="card">No hay publicaciones.</div>{% endfor %}</div></div>
+<script>
+const provinces={{PROVINCIAS|tojson}}, p=document.getElementById('fp'), m=document.getElementById('fm');
+function fill(){const cur=m.dataset.current||'';m.innerHTML='<option value="">Todos los municipios</option>';if(!p.value)return;(provinces[p.value]||[]).forEach(x=>{const o=document.createElement('option');o.value=x;o.textContent=x;if(x===cur)o.selected=true;m.appendChild(o);});}
+p.addEventListener('change',()=>{m.dataset.current='';fill();});fill();
+</script>{% endblock %}

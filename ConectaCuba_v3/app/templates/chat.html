@@ -1,11 +1,76 @@
 {% extends 'base.html' %}{% block content %}
-<div class="container"><div class="form"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><h2 style="margin-bottom:4px">Chat con {{other.full_name}}</h2><div class="muted">{{other.role|capitalize}} · {{other.municipality}}, {{other.province}}</div></div><a class="btn" href="{{url_for('chats')}}">← Mis chats</a></div>
-<div id="messages" style="margin-top:20px;max-height:60vh;overflow-y:auto;padding-right:4px">{% for m in msgs %}<div class="msg {{'mine' if m.sender_id==current_user.id else 'theirs'}}" data-message-id="{{m.id}}"><div class="message-body">{{m.body}}</div><div class="muted">{{m.created_at.strftime('%d/%m/%Y %H:%M')}}</div></div>{% else %}<div id="empty-chat" class="muted">Aún no hay mensajes.</div>{% endfor %}</div>
-<form id="chat-form" method="post" style="margin-top:20px"><input type="hidden" id="csrf-token" name="_csrf" value="{{csrf_token()}}"><input id="message-input" name="body" maxlength="2000" placeholder="Escribe un mensaje" autocomplete="off" required><br><br><button id="send-button" class="btn primary">Enviar</button></form></div></div>
+<div class="container"><div class="form">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+<div>
+<h2 style="margin-bottom:4px">Chat con {{other.full_name}}</h2>
+<div class="muted">{{other.role|capitalize}} · {{other.municipality}}, {{other.province}}</div>
+</div>
+<a class="btn" href="{{url_for('chats')}}">← Mis chats</a>
+</div>
+
+{% if context_a and context_b %}
+<div class="match-context">
+<div class="muted">CONVERSACIÓN SOBRE ESTA COINCIDENCIA</div>
+<h3>{{context_a.display_product}}</h3>
+<div><b>{{context_a.display_kind}}</b>: {{context_a.quantity}} {{context_a.unit}} · {{context_a.price}} CUP · {{context_a.municipality}}</div>
+<div><b>{{context_b.display_kind}}</b>: {{context_b.quantity}} {{context_b.unit}} · {{context_b.price}} CUP · {{context_b.municipality}}</div>
+</div>
+{% endif %}
+
+<div id="messages" style="margin-top:20px;max-height:60vh;overflow-y:auto;padding-right:4px">
+{% for m in msgs %}
+<div class="msg {{'mine' if m.sender_id==current_user.id else 'theirs'}}" data-message-id="{{m.id}}">
+<div class="message-body">{{m.body}}</div>
+<div class="muted">{{m.created_at.strftime('%d/%m/%Y %H:%M')}}</div>
+</div>
+{% else %}<div id="empty-chat" class="muted">Aún no hay mensajes.</div>{% endfor %}
+</div>
+
+<form id="chat-form" method="post" style="margin-top:20px">
+<input type="hidden" id="csrf-token" name="_csrf" value="{{csrf_token()}}">
+<input id="message-input" name="body" maxlength="2000" placeholder="Escribe un mensaje" autocomplete="off" required>
+<br><br><button id="send-button" class="btn primary">Enviar</button>
+</form>
+</div></div>
+
 <script>
-(()=>{const box=document.getElementById('messages'),form=document.getElementById('chat-form'),input=document.getElementById('message-input'),button=document.getElementById('send-button'),csrf=document.getElementById('csrf-token').value,url="{{url_for('chat_messages',user_id=other.id)}}",send="{{url_for('chat',user_id=other.id)}}";let last=0,polling=false;
-function scan(){document.querySelectorAll('[data-message-id]').forEach(e=>{last=Math.max(last,Number(e.dataset.messageId||0));});}
-function add(m){if(document.querySelector(`[data-message-id="${m.id}"]`))return;const emp=document.getElementById('empty-chat');if(emp)emp.remove();const w=document.createElement('div');w.className='msg '+(m.mine?'mine':'theirs');w.dataset.messageId=m.id;const b=document.createElement('div');b.className='message-body';b.textContent=m.body;const t=document.createElement('div');t.className='muted';t.textContent=m.created_at;w.append(b,t);box.appendChild(w);last=Math.max(last,Number(m.id));box.scrollTop=box.scrollHeight;}
-async function poll(){if(polling||document.hidden)return;polling=true;try{const r=await fetch(`${url}?after=${last}`,{headers:{Accept:'application/json'},cache:'no-store'});if(r.ok){const d=await r.json();(d.messages||[]).forEach(add);}}finally{polling=false;}}
-form.addEventListener('submit',async e=>{e.preventDefault();const body=input.value.trim();if(!body)return;button.disabled=true;const fd=new FormData();fd.append('body',body);fd.append('_csrf',csrf);try{const r=await fetch(send,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json','X-CSRF-Token':csrf}});if(!r.ok)throw new Error();const d=await r.json();if(d.message)add(d.message);input.value='';input.focus();}catch(e){alert('No se pudo enviar el mensaje.');}finally{button.disabled=false;}});scan();box.scrollTop=box.scrollHeight;setInterval(poll,2000);})();
-</script>{% endblock %}
+(()=>{
+ const box=document.getElementById('messages'),
+ form=document.getElementById('chat-form'),
+ input=document.getElementById('message-input'),
+ button=document.getElementById('send-button'),
+ csrf=document.getElementById('csrf-token').value,
+ url="{{url_for('chat_messages',user_id=other.id,a=context_a_id,b=context_b_id)}}",
+ send="{{url_for('chat',user_id=other.id,a=context_a_id,b=context_b_id)}}";
+ let last=0,polling=false;
+
+ function scan(){document.querySelectorAll('[data-message-id]').forEach(e=>{last=Math.max(last,Number(e.dataset.messageId||0));});}
+ function add(m){
+  if(document.querySelector(`[data-message-id="${m.id}"]`))return;
+  const emp=document.getElementById('empty-chat');if(emp)emp.remove();
+  const w=document.createElement('div');w.className='msg '+(m.mine?'mine':'theirs');w.dataset.messageId=m.id;
+  const b=document.createElement('div');b.className='message-body';b.textContent=m.body;
+  const t=document.createElement('div');t.className='muted';t.textContent=m.created_at;
+  w.append(b,t);box.appendChild(w);last=Math.max(last,Number(m.id));box.scrollTop=box.scrollHeight;
+ }
+ async function poll(){
+  if(polling||document.hidden)return;polling=true;
+  try{
+   const r=await fetch(`${url}&after=${last}`,{headers:{Accept:'application/json'},cache:'no-store'});
+   if(r.ok){const d=await r.json();(d.messages||[]).forEach(add);}
+  }finally{polling=false;}
+ }
+ form.addEventListener('submit',async e=>{
+  e.preventDefault();const body=input.value.trim();if(!body)return;button.disabled=true;
+  const fd=new FormData();fd.append('body',body);fd.append('_csrf',csrf);
+  try{
+   const r=await fetch(send,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json','X-CSRF-Token':csrf}});
+   if(!r.ok)throw new Error();
+   const d=await r.json();if(d.message)add(d.message);input.value='';input.focus();
+  }catch(e){alert('No se pudo enviar el mensaje.');}
+  finally{button.disabled=false;}
+ });
+ scan();box.scrollTop=box.scrollHeight;setInterval(poll,2000);
+})();
+</script>
+{% endblock %}

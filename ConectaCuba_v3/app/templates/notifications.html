@@ -1,1 +1,14 @@
-{% extends 'base.html' %}{% block content %}<div class="container"><h2>Notificaciones</h2><div class="list">{% for n in notes %}<div class="row">{{n.message}}</div>{% else %}<div class="card">No hay notificaciones.</div>{% endfor %}</div></div>{% endblock %}
+{% extends 'base.html' %}{% block content %}
+<div class="container"><h2>Notificaciones</h2><div class="list">
+{% for n in notes %}
+{% if n.listing_id %}
+<a class="row" href="{{url_for('detail',listing_id=n.listing_id)}}" style="text-decoration:none;color:inherit">
+<div>{{n.message}}<div class="muted">{{n.created_at.strftime('%d/%m/%Y %H:%M')}}</div></div>
+<div>Ver publicación →</div>
+</a>
+{% else %}
+<div class="row"><div>{{n.message}}<div class="muted">{{n.created_at.strftime('%d/%m/%Y %H:%M')}}</div></div></div>
+{% endif %}
+{% else %}<div class="card">No hay notificaciones.</div>{% endfor %}
+</div></div>
+{% endblock %}

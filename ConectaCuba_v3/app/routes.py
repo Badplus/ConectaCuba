@@ -102,6 +102,9 @@ def verify_turnstile():
         return False
 
 def matches_for(item):
+    if not item.active or item.quantity <= 0:
+        return []
+
     out = []
     for o in Listing.query.filter(
         Listing.id != item.id,
@@ -174,6 +177,25 @@ def message_context_filter(a_id, b_id):
         Message.context_listing_b_id.is_(None),
     )
 
+def cleanup_listing_matches(listing_id):
+    Notification.query.filter(or_(
+        Notification.listing_id == listing_id,
+        Notification.context_listing_a_id == listing_id,
+        Notification.context_listing_b_id == listing_id,
+    )).delete(synchronize_session=False)
+
+def visible_message_condition():
+    return or_(
+        and_(
+            Message.sender_id == current_user.id,
+            Message.hidden_by_sender.is_(False),
+        ),
+        and_(
+            Message.receiver_id == current_user.id,
+            Message.hidden_by_receiver.is_(False),
+        ),
+    )
+
 def register_routes(app):
     @app.context_processor
     def ctx():
@@ -181,7 +203,11 @@ def register_routes(app):
         unread = unread_chat = 0
         if current_user.is_authenticated:
             unread = Notification.query.filter_by(user_id=current_user.id, read=False).count()
-            unread_chat = Message.query.filter_by(receiver_id=current_user.id, read_at=None).count()
+            unread_chat = Message.query.filter_by(
+                receiver_id=current_user.id,
+                read_at=None,
+                hidden_by_receiver=False,
+            ).count()
         return dict(
             MUNICIPIOS=MUNICIPIOS,
             PRODUCTOS=PRODUCTOS,
@@ -204,7 +230,11 @@ def register_routes(app):
     def unread_status():
         return jsonify({
             "notifications": Notification.query.filter_by(user_id=current_user.id, read=False).count(),
-            "chats": Message.query.filter_by(receiver_id=current_user.id, read_at=None).count(),
+            "chats": Message.query.filter_by(
+                receiver_id=current_user.id,
+                read_at=None,
+                hidden_by_receiver=False,
+            ).count(),
         })
 
     @app.route("/")
@@ -312,9 +342,26 @@ def register_routes(app):
     def dashboard():
         if not current_user.approved:
             return redirect(url_for("pending"))
-        ls = Listing.query.filter_by(owner_id=current_user.id).order_by(Listing.created_at.desc()).all()
-        notes = Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).limit(8).all()
-        return render_template("dashboard.html", listings=ls, notes=notes)
+        active_listings = Listing.query.filter_by(
+            owner_id=current_user.id,
+            active=True,
+        ).order_by(Listing.created_at.desc()).all()
+
+        archived_listings = Listing.query.filter_by(
+            owner_id=current_user.id,
+            active=False,
+        ).order_by(Listing.created_at.desc()).all()
+
+        notes = Notification.query.filter_by(
+            user_id=current_user.id
+        ).order_by(Notification.created_at.desc()).limit(8).all()
+
+        return render_template(
+            "dashboard.html",
+            listings=active_listings,
+            archived_listings=archived_listings,
+            notes=notes,
+        )
 
     @app.route("/publish", methods=["GET","POST"])
     @login_required
@@ -388,6 +435,79 @@ def register_routes(app):
             return redirect(url_for("matches", listing_id=item.id))
         return render_template("publish.html")
 
+    @app.route("/listing/<int:listing_id>/edit", methods=["GET","POST"])
+    @login_required
+    @approved_required
+    def edit_listing(listing_id):
+        item = db.session.get(Listing, listing_id)
+        if not item or item.owner_id != current_user.id:
+            abort(404)
+
+        if request.method == "POST":
+            d = request.form
+            try:
+                quantity = float(d.get("quantity", ""))
+                price = float(d.get("price", ""))
+            except (TypeError, ValueError):
+                flash("Cantidad o precio no válidos.", "danger")
+                return redirect(url_for("edit_listing", listing_id=listing_id))
+
+            coverage = d.get("coverage", "")
+            description = clean_text(d.get("description"), 1200)
+
+            if quantity < 0 or price < 0 or coverage not in COVERAGES:
+                flash("Revisa cantidad, precio y disponibilidad.", "danger")
+                return redirect(url_for("edit_listing", listing_id=listing_id))
+
+            item.quantity = quantity
+            item.price = price
+            item.coverage = coverage
+            item.description = description
+
+            if quantity == 0:
+                item.active = False
+                cleanup_listing_matches(item.id)
+                flash("La publicación se cerró porque ya no queda producto disponible.", "success")
+            else:
+                item.active = True
+                flash("Publicación actualizada.", "success")
+
+            db.session.commit()
+            return redirect(url_for("dashboard"))
+
+        return render_template("edit_listing.html", listing=item)
+
+    @app.route("/listing/<int:listing_id>/sold", methods=["POST"])
+    @login_required
+    @approved_required
+    def mark_listing_sold(listing_id):
+        item = db.session.get(Listing, listing_id)
+        if not item or item.owner_id != current_user.id:
+            abort(404)
+
+        item.quantity = 0
+        item.active = False
+        cleanup_listing_matches(item.id)
+        db.session.commit()
+
+        flash("Publicación marcada como vendida/finalizada. Sus coincidencias activas fueron retiradas.", "success")
+        return redirect(url_for("dashboard"))
+
+    @app.route("/listing/<int:listing_id>/delete", methods=["POST"])
+    @login_required
+    @approved_required
+    def delete_listing(listing_id):
+        item = db.session.get(Listing, listing_id)
+        if not item or item.owner_id != current_user.id:
+            abort(404)
+
+        item.active = False
+        cleanup_listing_matches(item.id)
+        db.session.commit()
+
+        flash("Publicación eliminada del mercado. Ya no generará coincidencias.", "success")
+        return redirect(url_for("dashboard"))
+
     @app.route("/matches/<int:listing_id>")
     @login_required
     @approved_required
@@ -448,10 +568,9 @@ def register_routes(app):
     @login_required
     @approved_required
     def chats():
-        msgs = Message.query.filter(or_(
-            Message.sender_id == current_user.id,
-            Message.receiver_id == current_user.id,
-        )).order_by(Message.created_at.desc()).all()
+        msgs = Message.query.filter(
+            visible_message_condition()
+        ).order_by(Message.created_at.desc()).all()
 
         seen = set()
         conversations = []
@@ -470,6 +589,7 @@ def register_routes(app):
                 sender_id=partner_id,
                 receiver_id=current_user.id,
                 read_at=None,
+                hidden_by_receiver=False,
                 context_listing_a_id=m.context_listing_a_id,
                 context_listing_b_id=m.context_listing_b_id,
             ).count()
@@ -539,6 +659,7 @@ def register_routes(app):
             Message.sender_id == other.id,
             Message.receiver_id == current_user.id,
             Message.read_at.is_(None),
+            Message.hidden_by_receiver.is_(False),
             message_context_filter(a_id, b_id),
         ).all()
 
@@ -550,8 +671,16 @@ def register_routes(app):
 
         msgs = Message.query.filter(
             or_(
-                and_(Message.sender_id == current_user.id, Message.receiver_id == other.id),
-                and_(Message.sender_id == other.id, Message.receiver_id == current_user.id),
+                and_(
+                    Message.sender_id == current_user.id,
+                    Message.receiver_id == other.id,
+                    Message.hidden_by_sender.is_(False),
+                ),
+                and_(
+                    Message.sender_id == other.id,
+                    Message.receiver_id == current_user.id,
+                    Message.hidden_by_receiver.is_(False),
+                ),
             ),
             message_context_filter(a_id, b_id),
         ).order_by(Message.created_at.asc()).all()
@@ -569,7 +698,7 @@ def register_routes(app):
     def serialize_message(m):
         return {
             "id": m.id,
-            "body": m.body,
+            "body": "Mensaje eliminado" if m.deleted_for_all else m.body,
             "sender_id": m.sender_id,
             "receiver_id": m.receiver_id,
             "mine": m.sender_id == current_user.id,
@@ -594,8 +723,16 @@ def register_routes(app):
         msgs = Message.query.filter(
             Message.id > after,
             or_(
-                and_(Message.sender_id == current_user.id, Message.receiver_id == other.id),
-                and_(Message.sender_id == other.id, Message.receiver_id == current_user.id),
+                and_(
+                    Message.sender_id == current_user.id,
+                    Message.receiver_id == other.id,
+                    Message.hidden_by_sender.is_(False),
+                ),
+                and_(
+                    Message.sender_id == other.id,
+                    Message.receiver_id == current_user.id,
+                    Message.hidden_by_receiver.is_(False),
+                ),
             ),
             message_context_filter(a_id, b_id),
         ).order_by(Message.id.asc()).all()
@@ -614,6 +751,55 @@ def register_routes(app):
             db.session.commit()
 
         return jsonify({"messages": [serialize_message(m) for m in msgs]})
+
+    @app.route("/message/<int:message_id>/delete", methods=["POST"])
+    @login_required
+    @approved_required
+    def delete_message(message_id):
+        msg = db.session.get(Message, message_id)
+        if not msg or msg.sender_id != current_user.id:
+            abort(404)
+
+        msg.deleted_for_all = True
+        msg.body = ""
+        db.session.commit()
+
+        return redirect(url_for(
+            "chat",
+            user_id=msg.receiver_id,
+            a=msg.context_listing_a_id,
+            b=msg.context_listing_b_id,
+        ))
+
+    @app.route("/chat/<int:user_id>/delete", methods=["POST"])
+    @login_required
+    @approved_required
+    def delete_chat(user_id):
+        other = db.session.get(User, user_id)
+        if not other:
+            abort(404)
+
+        a_id = request.form.get("a", type=int)
+        b_id = request.form.get("b", type=int)
+        a_id, b_id = context_pair_ids(a_id, b_id)
+
+        msgs = Message.query.filter(
+            or_(
+                and_(Message.sender_id == current_user.id, Message.receiver_id == other.id),
+                and_(Message.sender_id == other.id, Message.receiver_id == current_user.id),
+            ),
+            message_context_filter(a_id, b_id),
+        ).all()
+
+        for msg in msgs:
+            if msg.sender_id == current_user.id:
+                msg.hidden_by_sender = True
+            if msg.receiver_id == current_user.id:
+                msg.hidden_by_receiver = True
+
+        db.session.commit()
+        flash("Chat eliminado de tu bandeja.", "success")
+        return redirect(url_for("chats"))
 
     @app.route("/admin/login", methods=["GET","POST"])
     def admin_login():

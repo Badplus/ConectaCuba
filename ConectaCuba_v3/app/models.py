@@ -67,6 +67,9 @@ class Message(db.Model):
     read_at = db.Column(db.DateTime, nullable=True)
     context_listing_a_id = db.Column(db.Integer, nullable=True)
     context_listing_b_id = db.Column(db.Integer, nullable=True)
+    hidden_by_sender = db.Column(db.Boolean, nullable=False, default=False)
+    hidden_by_receiver = db.Column(db.Boolean, nullable=False, default=False)
+    deleted_for_all = db.Column(db.Boolean, nullable=False, default=False)
 
 class Setting(db.Model):
     id = db.Column(db.Integer, primary_key=True)

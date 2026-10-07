@@ -2,18 +2,13 @@
 <div class="container">
 <div class="card">
 <h2>Hola, {{current_user.full_name}}</h2>
-<p>
-Cuenta activa · {{current_user.role}} · {{current_user.municipality}}, {{current_user.province}}
-{% if current_user.is_admin %} · <span class="pill">ADMINISTRADOR</span>{% endif %}
-</p>
-
+<p>Cuenta activa · {{current_user.role}} · {{current_user.municipality}}, {{current_user.province}}
+{% if current_user.is_admin %} · <span class="pill">ADMINISTRADOR</span>{% endif %}</p>
 <a class="btn primary" href="{{url_for('publish')}}">+ Publicar</a>
-{% if current_user.is_admin %}
-<a class="btn secondary" href="{{url_for('admin')}}">Administración</a>
-{% endif %}
+{% if current_user.is_admin %}<a class="btn secondary" href="{{url_for('admin')}}">Administración</a>{% endif %}
 </div>
 
-<h2>Mis publicaciones</h2>
+<h2>Mis publicaciones activas</h2>
 <div class="list">
 {% for x in listings %}
 <div class="row">
@@ -21,11 +16,39 @@ Cuenta activa · {{current_user.role}} · {{current_user.municipality}}, {{curre
 <b>{{x.display_product}}</b>
 <div class="muted">{{x.display_kind}} · {{x.quantity}} {{x.unit}} · {{x.price}} CUP · {{x.municipality}}, {{x.province}}</div>
 </div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
 <a class="btn secondary" href="{{url_for('matches',listing_id=x.id)}}">Coincidencias</a>
+<a class="btn secondary" href="{{url_for('edit_listing',listing_id=x.id)}}">Actualizar</a>
+<form method="post" action="{{url_for('mark_listing_sold',listing_id=x.id)}}" onsubmit="return confirm('¿Marcar esta publicación como vendida/finalizada?');">
+<input type="hidden" name="_csrf" value="{{csrf_token()}}">
+<button class="btn">Vendido / agotado</button>
+</form>
+<form method="post" action="{{url_for('delete_listing',listing_id=x.id)}}" onsubmit="return confirm('¿Eliminar esta publicación del mercado?');">
+<input type="hidden" name="_csrf" value="{{csrf_token()}}">
+<button class="btn danger">Eliminar</button>
+</form>
+</div>
 </div>
 {% else %}
-<div class="card">Sin publicaciones todavía.</div>
+<div class="card">Sin publicaciones activas.</div>
 {% endfor %}
 </div>
+
+{% if archived_listings %}
+<h2 style="margin-top:28px">Publicaciones cerradas</h2>
+<div class="list">
+{% for x in archived_listings %}
+<div class="row">
+<div>
+<b>{{x.display_product}}</b>
+<div class="muted">{{x.display_kind}} · {{x.quantity}} {{x.unit}} · {{x.price}} CUP · CERRADA</div>
+</div>
+{% if x.quantity > 0 %}
+<a class="btn secondary" href="{{url_for('edit_listing',listing_id=x.id)}}">Reactivar / actualizar</a>
+{% endif %}
+</div>
+{% endfor %}
+</div>
+{% endif %}
 </div>
 {% endblock %}

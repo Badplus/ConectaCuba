@@ -1,0 +1,35 @@
+{% extends 'base.html' %}{% block content %}
+<div class="container"><div class="form">
+<h2>Actualizar publicación</h2>
+<p><b>{{listing.display_kind}} de {{listing.display_product}}</b></p>
+<form method="post" class="grid">
+<input type="hidden" name="_csrf" value="{{csrf_token()}}">
+<div>
+<label>Cantidad disponible</label>
+<input type="number" min="0" step="0.001" name="quantity" value="{{listing.quantity}}" required>
+<div class="muted">Si escribes 0, la publicación se cerrará automáticamente.</div>
+</div>
+<div>
+<label>Precio CUP/unidad</label>
+<input type="number" min="0" step="0.01" name="price" value="{{listing.price}}" required>
+</div>
+<div class="full">
+<label>Disponibilidad geográfica</label>
+<select name="coverage">
+<option value="municipio" {% if listing.coverage=='municipio' %}selected{% endif %}>Solo este municipio</option>
+<option value="cercanos" {% if listing.coverage=='cercanos' %}selected{% endif %}>Municipios cercanos</option>
+<option value="provincia" {% if listing.coverage=='provincia' %}selected{% endif %}>Toda esta provincia</option>
+<option value="ambas_provincias" {% if listing.coverage=='ambas_provincias' %}selected{% endif %}>Santiago de Cuba y Holguín</option>
+</select>
+</div>
+<div class="full">
+<label>Descripción</label>
+<textarea name="description" maxlength="1200">{{listing.description or ''}}</textarea>
+</div>
+<div class="full">
+<button class="btn primary">Guardar cambios</button>
+<a class="btn secondary" href="{{url_for('dashboard')}}">Cancelar</a>
+</div>
+</form>
+</div></div>
+{% endblock %}

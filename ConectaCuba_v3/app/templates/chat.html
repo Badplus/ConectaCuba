@@ -5,12 +5,20 @@
 <h2 style="margin-bottom:4px">Chat con {{other.full_name}}</h2>
 <div class="muted">{{other.role|capitalize}} · {{other.municipality}}, {{other.province}}</div>
 </div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
 <a class="btn" href="{{url_for('chats')}}">← Mis chats</a>
+<form method="post" action="{{url_for('delete_chat',user_id=other.id)}}" onsubmit="return confirm('¿Eliminar este chat de tu bandeja?');">
+<input type="hidden" name="_csrf" value="{{csrf_token()}}">
+<input type="hidden" name="a" value="{{context_a_id or ''}}">
+<input type="hidden" name="b" value="{{context_b_id or ''}}">
+<button class="btn danger" type="submit">Eliminar chat</button>
+</form>
+</div>
 </div>
 
 {% if context_a and context_b %}
 <div class="match-context">
-<div class="pill">COINCIDENCIA ACTUAL</div>
+<div class="pill">{% if context_a.active and context_b.active %}COINCIDENCIA ACTUAL{% else %}COINCIDENCIA CERRADA{% endif %}</div>
 <h3 style="margin-bottom:8px">{{context_a.display_product}}</h3>
 <div><b>Publicación 1 — {{context_a.display_kind}}</b>: {{context_a.quantity}} {{context_a.unit}} · {{context_a.price}} CUP · {{context_a.municipality}}, {{context_a.province}}</div>
 <div style="margin-top:5px"><b>Publicación 2 — {{context_b.display_kind}}</b>: {{context_b.quantity}} {{context_b.unit}} · {{context_b.price}} CUP · {{context_b.municipality}}, {{context_b.province}}</div>
@@ -21,23 +29,23 @@
 <div id="messages" style="margin-top:20px;max-height:60vh;overflow-y:auto;padding-right:4px">
 {% if context_a and context_b %}
 <div class="conversation-context-label">
-<strong>Inicio de conversación:</strong> {{context_a.display_kind}} de {{context_a.display_product}} ↔ {{context_b.display_kind}} de {{context_b.display_product}}
+<strong>Conversación:</strong> {{context_a.display_kind}} de {{context_a.display_product}} ↔ {{context_b.display_kind}} de {{context_b.display_product}}
 </div>
 {% endif %}
 
 {% for m in msgs %}
 <div class="msg {{'mine' if m.sender_id==current_user.id else 'theirs'}}" data-message-id="{{m.id}}">
-<div class="message-body">{{m.body}}</div>
+<div class="message-body">{% if m.deleted_for_all %}<i>Mensaje eliminado</i>{% else %}{{m.body}}{% endif %}</div>
 <div class="muted">{{m.created_at.strftime('%d/%m/%Y %H:%M')}}</div>
-</div>
-{% else %}
-<div id="empty-chat" class="muted">
-{% if context_a and context_b %}
-Aún no hay mensajes sobre esta coincidencia.
-{% else %}
-Aún no hay mensajes.
+{% if m.sender_id==current_user.id and not m.deleted_for_all %}
+<form method="post" action="{{url_for('delete_message',message_id=m.id)}}" style="margin-top:5px">
+<input type="hidden" name="_csrf" value="{{csrf_token()}}">
+<button class="msg-delete" type="submit" onclick="return confirm('¿Eliminar este mensaje para ambos?');">Eliminar mensaje</button>
+</form>
 {% endif %}
 </div>
+{% else %}
+<div id="empty-chat" class="muted">Aún no hay mensajes.</div>
 {% endfor %}
 </div>
 
@@ -58,7 +66,6 @@ Aún no hay mensajes.
  url="{{url_for('chat_messages',user_id=other.id,a=context_a_id,b=context_b_id)}}",
  send="{{url_for('chat',user_id=other.id,a=context_a_id,b=context_b_id)}}";
  let last=0,polling=false;
-
  function scan(){document.querySelectorAll('[data-message-id]').forEach(e=>{last=Math.max(last,Number(e.dataset.messageId||0));});}
  function add(m){
   if(document.querySelector(`[data-message-id="${m.id}"]`))return;

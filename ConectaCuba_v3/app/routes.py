@@ -48,6 +48,14 @@ def register_routes(app):
    unread_chat=Message.query.filter_by(receiver_id=current_user.id,read_at=None).count()
   return dict(MUNICIPIOS=MUNICIPIOS,PRODUCTOS=PRODUCTOS,OWNER_WHATSAPP=current_app.config['OWNER_WHATSAPP'],commission=s.commission if s else 0,unread=unread,unread_chat=unread_chat)
 
+ @app.route('/status/unread')
+ @login_required
+ def unread_status():
+  return jsonify({
+   'notifications': Notification.query.filter_by(user_id=current_user.id,read=False).count(),
+   'chats': Message.query.filter_by(receiver_id=current_user.id,read_at=None).count()
+  })
+
  @app.route('/')
  def index():
   q=request.args.get('q','').strip(); kind=request.args.get('kind',''); muni=request.args.get('municipality','')

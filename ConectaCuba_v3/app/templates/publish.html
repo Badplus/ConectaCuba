@@ -1,52 +1,18 @@
 {% extends 'base.html' %}{% block content %}
 <div class="container"><div class="form">
 <h2>Nueva publicación</h2>
+<p class="muted">Puedes incluir varios productos en una sola venta o compra.</p>
 
-<form method="post" class="grid">
+<form method="post" id="publish-form">
 <input type="hidden" name="_csrf" value="{{csrf_token()}}">
 
+<div class="grid">
 <div>
 <label>Tipo</label>
 <select name="kind">
 <option value="oferta">VENTA</option>
 <option value="demanda">COMPRA</option>
 </select>
-</div>
-
-<div>
-<label>Producto</label>
-<select id="product" name="product">
-{% for p in PRODUCTOS %}
-<option value="{{p}}">{{p}}</option>
-{% endfor %}
-</select>
-</div>
-
-<div id="custom-wrap" class="full" hidden>
-<label>¿Qué producto es?</label>
-<input id="custom-product" name="custom_product" maxlength="120">
-</div>
-
-<div>
-<label>Cantidad</label>
-<input type="number" min="0.001" step="0.001" name="quantity" required>
-</div>
-
-<div>
-<label>Unidad</label>
-<select name="unit">
-<option>lb</option>
-<option>kg</option>
-<option>unidad</option>
-<option>saco</option>
-<option>caja</option>
-<option>L</option>
-</select>
-</div>
-
-<div>
-<label>Precio CUP/unidad</label>
-<input type="number" min="0" step="0.01" name="price" required>
 </div>
 
 <div>
@@ -63,7 +29,7 @@
 <select id="municipality" name="municipality"></select>
 </div>
 
-<div class="full">
+<div>
 <label>Disponibilidad geográfica</label>
 <select name="coverage">
 <option value="municipio">Solo este municipio</option>
@@ -71,54 +37,123 @@
 <option value="provincia">Toda esta provincia</option>
 <option value="ambas_provincias">Santiago de Cuba y Holguín</option>
 </select>
-<div class="muted" style="margin-top:6px">
-Si puedes comprar o vender también en la otra provincia, selecciona “Santiago de Cuba y Holguín”.
-</div>
 </div>
 
 <div class="full">
-<label>Descripción</label>
-<textarea name="description" maxlength="1200"></textarea>
+<label>Descripción general</label>
+<textarea name="description" maxlength="1200" placeholder="Información común para todos los productos de esta publicación"></textarea>
+</div>
 </div>
 
-<div class="full">
+<h3>Productos</h3>
+<div id="products"></div>
+
+<div style="margin:12px 0">
+<button type="button" id="add-product" class="btn secondary">+ Añadir otro producto</button>
+</div>
+
 <button class="btn primary">Publicar y buscar coincidencias</button>
-</div>
 </form>
 </div></div>
 
+<template id="product-template">
+<div class="product-editor card">
+<div class="product-editor-head">
+<strong>Producto</strong>
+<button type="button" class="remove-product btn danger">Quitar</button>
+</div>
+<div class="grid">
+<div>
+<label>Producto</label>
+<select name="product[]" class="product-select" required>
+{% for p in PRODUCTOS %}<option value="{{p}}">{{p}}</option>{% endfor %}
+</select>
+</div>
+
+<div class="custom-wrap" hidden>
+<label>¿Qué producto es?</label>
+<input name="custom_product[]" class="custom-product" maxlength="120">
+</div>
+
+<div>
+<label>Cantidad</label>
+<input type="number" min="0.001" step="0.001" name="quantity[]" required>
+</div>
+
+<div>
+<label>Unidad</label>
+<select name="unit[]" required>
+<option>lb</option><option>kg</option><option>unidad</option><option>saco</option><option>caja</option><option>L</option>
+</select>
+</div>
+
+<div>
+<label>Precio CUP/unidad</label>
+<input type="number" min="0" step="0.01" name="price[]" required>
+</div>
+</div>
+</div>
+</template>
+
 <script>
 const provinces={{PROVINCIAS|tojson}},
-      p=document.getElementById('province'),
-      m=document.getElementById('municipality'),
-      preferred={{current_user.municipality|tojson}};
+      province=document.getElementById('province'),
+      municipality=document.getElementById('municipality'),
+      preferred={{current_user.municipality|tojson}},
+      products=document.getElementById('products'),
+      template=document.getElementById('product-template');
 
-function fill(){
-  m.innerHTML='';
-  (provinces[p.value]||[]).forEach(x=>{
-    const o=document.createElement('option');
-    o.value=x;
-    o.textContent=x;
-    if(x===preferred) o.selected=true;
-    m.appendChild(o);
-  });
+function fillMunicipalities(){
+ municipality.innerHTML='';
+ (provinces[province.value]||[]).forEach(x=>{
+   const o=document.createElement('option');o.value=x;o.textContent=x;
+   if(x===preferred)o.selected=true;
+   municipality.appendChild(o);
+ });
+}
+province.addEventListener('change',fillMunicipalities);
+fillMunicipalities();
+
+function configureCard(card){
+ const select=card.querySelector('.product-select'),
+       wrap=card.querySelector('.custom-wrap'),
+       custom=card.querySelector('.custom-product'),
+       remove=card.querySelector('.remove-product');
+
+ function toggleOther(){
+   const other=select.value==='Otro';
+   wrap.hidden=!other;
+   custom.required=other;
+   if(!other)custom.value='';
+ }
+ select.addEventListener('change',toggleOther);
+ toggleOther();
+
+ remove.addEventListener('click',()=>{
+   if(products.children.length<=1){
+     alert('La publicación debe tener al menos un producto.');
+     return;
+   }
+   card.remove();
+   refreshRemoveButtons();
+ });
 }
 
-p.addEventListener('change',fill);
-fill();
-
-const prod=document.getElementById('product'),
-      wrap=document.getElementById('custom-wrap'),
-      ci=document.getElementById('custom-product');
-
-function toggle(){
-  const other=prod.value==='Otro';
-  wrap.hidden=!other;
-  ci.required=other;
-  if(!other) ci.value='';
+function refreshRemoveButtons(){
+ document.querySelectorAll('.remove-product').forEach(b=>{
+   b.style.display=products.children.length<=1?'none':'inline-block';
+ });
 }
 
-prod.addEventListener('change',toggle);
-toggle();
+function addProduct(){
+ const node=template.content.cloneNode(true);
+ const card=node.querySelector('.product-editor');
+ products.appendChild(node);
+ configureCard(card);
+ refreshRemoveButtons();
+}
+
+document.getElementById('add-product').addEventListener('click',addProduct);
+addProduct();
 </script>
 {% endblock %}

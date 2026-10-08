@@ -1,1 +1,26 @@
-{% extends 'base.html' %}{% block content %}<div class="container"><div class="card"><span class="pill {{'offer' if listing.kind=='oferta' else 'demand'}}">{{listing.display_kind|upper}}</span><h1>{{listing.display_product}}</h1><p>{{listing.quantity}} {{listing.unit}} · {{listing.price}} CUP/{{listing.unit}} · {{listing.municipality}}, {{listing.province}}</p><p>{{listing.description}}</p><p class="muted">La dirección exacta del usuario no se muestra públicamente.</p>{% if current_user.is_authenticated and current_user.approved and current_user.id!=listing.owner_id %}<a class="btn primary" href="{{url_for('chat',user_id=listing.owner_id)}}">Abrir chat</a>{% endif %}</div></div>{% endblock %}
+{% extends 'base.html' %}{% block content %}
+<div class="container"><div class="card">
+<span class="pill {{'offer' if listing.kind=='oferta' else 'demand'}}">{{listing.display_kind|upper}}</span>
+<h1>{{listing.active_items|length}} producto{% if listing.active_items|length != 1 %}s{% endif %}</h1>
+<p>{{listing.municipality}}, {{listing.province}}</p>
+
+<div class="product-detail-list">
+{% for item in listing.active_items %}
+<div class="product-detail-row">
+<b>{{item.display_product}}</b>
+<span>{{item.quantity}} {{item.unit}}</span>
+<span>{{'%.2f'|format(item.price)}} CUP/{{item.unit}}</span>
+</div>
+{% else %}
+<div class="muted">Esta publicación ya no tiene productos disponibles.</div>
+{% endfor %}
+</div>
+
+{% if listing.description %}<p>{{listing.description}}</p>{% endif %}
+<p class="muted">La dirección exacta del usuario no se muestra públicamente.</p>
+
+{% if current_user.is_authenticated and current_user.approved and current_user.id!=listing.owner_id %}
+<a class="btn primary" href="{{url_for('chat',user_id=listing.owner_id)}}">Abrir conversación general</a>
+{% endif %}
+</div></div>
+{% endblock %}

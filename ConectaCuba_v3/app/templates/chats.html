@@ -2,14 +2,18 @@
 <div class="container"><h2>Mis chats</h2><div class="list">
 {% for c in conversations %}
 <a class="row" href="{{url_for('chat',user_id=c.user.id,a=c.context_a.id if c.context_a else None,b=c.context_b.id if c.context_b else None)}}" style="text-decoration:none;color:inherit">
-<div>
+<div style="flex:1">
 <b>{{c.user.full_name}}{% if c.unread_count %} <span class="pill">{{c.unread_count}} nuevo{% if c.unread_count != 1 %}s{% endif %}</span>{% endif %}</b>
 <div class="muted">{{c.user.role|capitalize}} · {{c.user.municipality}}, {{c.user.province}}</div>
 
 {% if c.context_a and c.context_b %}
 <div class="chat-context-mini">
-<span class="pill">COINCIDENCIA</span>
-<strong>{{c.context_a.display_product}}</strong> · {{c.context_a.display_kind}} ↔ {{c.context_b.display_kind}}
+<span class="pill">{% if c.matched_products %}COINCIDENCIA{% else %}COINCIDENCIA CERRADA{% endif %}</span>
+{% if c.matched_products %}
+<strong>{{c.matched_products|join(', ')}}</strong>
+{% else %}
+Ya no hay productos activos coincidentes.
+{% endif %}
 </div>
 {% else %}
 <div class="muted">Conversación general</div>

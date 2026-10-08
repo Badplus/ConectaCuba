@@ -6,8 +6,8 @@ from flask import render_template, request, redirect, url_for, flash, session, c
 from flask_login import login_user, logout_user, login_required, current_user
 from sqlalchemy import or_, and_
 
-from . import db, MUNICIPIOS, PRODUCTOS, PROVINCIAS
-from .models import User, Listing, Notification, Message, Setting
+from . import db, PRODUCTOS, PROVINCIAS
+from .models import User, Listing, ListingItem, Notification, Message, Setting
 
 UNITS = {"lb","kg","unidad","saco","caja","L"}
 COVERAGES = {"municipio","cercanos","provincia","ambas_provincias"}
@@ -18,6 +18,7 @@ _LOGIN_ATTEMPTS = {}
 LOGIN_WINDOW_SECONDS = 600
 LOGIN_MAX_ATTEMPTS = 7
 
+
 def approved_required(fn):
     @wraps(fn)
     def wrapped(*a, **k):
@@ -25,6 +26,7 @@ def approved_required(fn):
             return redirect(url_for("pending"))
         return fn(*a, **k)
     return wrapped
+
 
 def admin_required(fn):
     @wraps(fn)
@@ -36,17 +38,18 @@ def admin_required(fn):
         return redirect(url_for("admin_login"))
     return wrapped
 
-def product_name(x):
-    return x.custom_product if x.product == "Otro" and x.custom_product else x.product
 
 def norm(s):
     return " ".join((s or "").strip().lower().split())
 
+
 def clean_text(v, n):
     return (v or "").strip()[:n]
 
+
 def valid_location(province, municipality):
     return province in PROVINCIAS and municipality in PROVINCIAS[province]
+
 
 def csrf_token():
     token = session.get("_csrf_token")
@@ -55,14 +58,17 @@ def csrf_token():
         session["_csrf_token"] = token
     return token
 
+
 def verify_csrf():
     expected = session.get("_csrf_token", "")
     supplied = request.form.get("_csrf") or request.headers.get("X-CSRF-Token", "")
     return bool(expected and supplied and hmac.compare_digest(expected, supplied))
 
+
 def client_ip():
     forwarded = request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-For", "")
     return (forwarded.split(",")[0].strip() if forwarded else request.remote_addr) or "unknown"
+
 
 def login_rate_limited(key):
     now = time.time()
@@ -70,25 +76,31 @@ def login_rate_limited(key):
     _LOGIN_ATTEMPTS[key] = attempts
     return len(attempts) >= LOGIN_MAX_ATTEMPTS
 
+
 def record_login_failure(key):
     _LOGIN_ATTEMPTS.setdefault(key, []).append(time.time())
 
+
 def clear_login_failures(key):
     _LOGIN_ATTEMPTS.pop(key, None)
+
 
 def verify_turnstile():
     secret = current_app.config.get("TURNSTILE_SECRET_KEY", "")
     site_key = current_app.config.get("TURNSTILE_SITE_KEY", "")
     if not secret or not site_key:
         return True
+
     token = request.form.get("cf-turnstile-response", "")
     if not token:
         return False
+
     payload = urllib.parse.urlencode({
         "secret": secret,
         "response": token,
         "remoteip": client_ip(),
     }).encode()
+
     try:
         req = urllib.request.Request(
             "https://challenges.cloudflare.com/turnstile/v0/siteverify",
@@ -101,69 +113,139 @@ def verify_turnstile():
     except Exception:
         return False
 
-def matches_for(item):
-    if not item.active or item.quantity <= 0:
+
+def geo_score(a, b):
+    if a.province == b.province and a.municipality == b.municipality:
+        return 3
+    if a.province == b.province and (
+        "provincia" in [a.coverage, b.coverage]
+        or "ambas_provincias" in [a.coverage, b.coverage]
+    ):
+        return 2
+    if a.province == b.province and "cercanos" in [a.coverage, b.coverage]:
+        return 1
+    if a.province != b.province and "ambas_provincias" in [a.coverage, b.coverage]:
+        return 2
+    return 0
+
+
+def pair_score(listing_a, item_a, listing_b, item_b):
+    geo = geo_score(listing_a, listing_b)
+    if geo == 0:
+        return None
+
+    if listing_a.kind == "oferta":
+        offer_item, demand_item = item_a, item_b
+    else:
+        offer_item, demand_item = item_b, item_a
+
+    qty = 2 if offer_item.quantity >= demand_item.quantity else 1 if offer_item.quantity >= demand_item.quantity * 0.5 else 0
+    price = 3 if offer_item.price <= demand_item.price else 0
+    score = geo + qty + price
+
+    level = (
+        "Coincidencia excelente" if score >= 7 else
+        "Buena coincidencia" if score >= 5 else
+        "Coincidencia posible"
+    )
+    return score, level
+
+
+def matched_item_pairs(listing_a, listing_b):
+    if not listing_a or not listing_b:
+        return []
+    if not listing_a.active or not listing_b.active:
+        return []
+    if listing_a.kind == listing_b.kind:
+        return []
+    if not listing_a.owner.approved or not listing_b.owner.approved:
         return []
 
-    out = []
-    for o in Listing.query.filter(
-        Listing.id != item.id,
+    pairs = []
+    for a in listing_a.active_items:
+        for b in listing_b.active_items:
+            if norm(a.display_product) != norm(b.display_product):
+                continue
+            scored = pair_score(listing_a, a, listing_b, b)
+            if not scored:
+                continue
+            score, level = scored
+            pairs.append({
+                "a": a,
+                "b": b,
+                "score": score,
+                "level": level,
+                "product": a.display_product,
+            })
+    return pairs
+
+
+def matches_for(listing):
+    if not listing.active or not listing.active_items:
+        return []
+
+    results = []
+    others = Listing.query.join(User).filter(
+        Listing.id != listing.id,
         Listing.active.is_(True),
-        Listing.kind != item.kind,
-    ).all():
-        if not o.owner.approved or norm(product_name(o)) != norm(product_name(item)):
+        Listing.kind != listing.kind,
+        User.approved.is_(True),
+    ).all()
+
+    for other in others:
+        pairs = matched_item_pairs(listing, other)
+        if not pairs:
             continue
 
-        offer = item if item.kind == "oferta" else o
-        demand = o if item.kind == "oferta" else item
+        products = []
+        seen = set()
+        for p in pairs:
+            key = norm(p["product"])
+            if key not in seen:
+                seen.add(key)
+                products.append(p["product"])
 
-        if offer.province == demand.province and offer.municipality == demand.municipality:
-            geo = 3
-        elif offer.province == demand.province and (
-            "provincia" in [offer.coverage, demand.coverage]
-            or "ambas_provincias" in [offer.coverage, demand.coverage]
-        ):
-            geo = 2
-        elif offer.province == demand.province and "cercanos" in [offer.coverage, demand.coverage]:
-            geo = 1
-        elif offer.province != demand.province and "ambas_provincias" in [offer.coverage, demand.coverage]:
-            geo = 2
-        else:
-            geo = 0
-
-        if geo == 0:
-            continue
-
-        qty = 2 if offer.quantity >= demand.quantity else 1 if offer.quantity >= demand.quantity * 0.5 else 0
-        price = 3 if offer.price <= demand.price else 0
-        score = geo + qty + price
-
-        out.append((
-            o,
-            score,
-            "Coincidencia excelente" if score >= 7 else
-            "Buena coincidencia" if score >= 5 else
+        best_score = max(p["score"] for p in pairs)
+        best_level = (
+            "Coincidencia excelente" if best_score >= 7 else
+            "Buena coincidencia" if best_score >= 5 else
             "Coincidencia posible"
-        ))
-    return sorted(out, key=lambda x: x[1], reverse=True)
+        )
+
+        results.append({
+            "listing": other,
+            "pairs": pairs,
+            "products": products,
+            "count": len(products),
+            "score": best_score,
+            "level": best_level,
+        })
+
+    return sorted(results, key=lambda x: (x["count"], x["score"]), reverse=True)
+
 
 def context_pair_ids(a_id, b_id):
     if not a_id or not b_id:
         return (None, None)
     return tuple(sorted((int(a_id), int(b_id))))
 
+
 def resolve_chat_context(other_user, a_id=None, b_id=None):
     a_id, b_id = context_pair_ids(a_id, b_id)
     if not a_id or not b_id:
         return None, None
+
     a = db.session.get(Listing, a_id)
     b = db.session.get(Listing, b_id)
     if not a or not b:
         abort(404)
+
     owners = {a.owner_id, b.owner_id}
     if owners != {current_user.id, other_user.id}:
         abort(403)
+
     return a, b
+
 
 def message_context_filter(a_id, b_id):
     a_id, b_id = context_pair_ids(a_id, b_id)
@@ -177,24 +259,119 @@ def message_context_filter(a_id, b_id):
         Message.context_listing_b_id.is_(None),
     )
 
-def cleanup_listing_matches(listing_id):
+
+def cleanup_listing_notifications(listing_id):
     Notification.query.filter(or_(
         Notification.listing_id == listing_id,
         Notification.context_listing_a_id == listing_id,
         Notification.context_listing_b_id == listing_id,
     )).delete(synchronize_session=False)
 
+
+def make_match_notifications(item):
+    for match in matches_for(item):
+        other = match["listing"]
+        products_text = ", ".join(match["products"][:5])
+        if match["count"] > 5:
+            products_text += f" y {match['count'] - 5} más"
+
+        a_id, b_id = context_pair_ids(item.id, other.id)
+
+        db.session.add(Notification(
+            user_id=current_user.id,
+            listing_id=other.id,
+            context_listing_a_id=a_id,
+            context_listing_b_id=b_id,
+            message=(
+                f"{match['level']}: {match['count']} producto"
+                f"{'s' if match['count'] != 1 else ''} coincide"
+                f"{'n' if match['count'] != 1 else ''}: {products_text}."
+            ),
+        ))
+
+        db.session.add(Notification(
+            user_id=other.owner_id,
+            listing_id=item.id,
+            context_listing_a_id=a_id,
+            context_listing_b_id=b_id,
+            message=(
+                f"Nueva coincidencia con {match['count']} producto"
+                f"{'s' if match['count'] != 1 else ''}: {products_text}."
+            ),
+        ))
+
+
+def parse_product_rows(form):
+    products = form.getlist("product[]")
+    customs = form.getlist("custom_product[]")
+    quantities = form.getlist("quantity[]")
+    units = form.getlist("unit[]")
+    prices = form.getlist("price[]")
+    existing_ids = form.getlist("item_id[]")
+    removes = set(form.getlist("remove_item[]"))
+
+    rows = []
+    seen_products = set()
+
+    total = max(len(products), len(quantities), len(units), len(prices))
+    for i in range(total):
+        product = products[i] if i < len(products) else ""
+        custom = clean_text(customs[i] if i < len(customs) else "", 120)
+        unit = units[i] if i < len(units) else ""
+        raw_qty = quantities[i] if i < len(quantities) else ""
+        raw_price = prices[i] if i < len(prices) else ""
+        existing_id = existing_ids[i] if i < len(existing_ids) else ""
+
+        if not product and not raw_qty and not raw_price:
+            continue
+
+        if product not in PRODUCTOS or unit not in UNITS:
+            raise ValueError("Producto o unidad no válido.")
+
+        if product == "Otro":
+            if len(custom) < 2:
+                raise ValueError("Especifica el nombre del producto cuando eliges “Otro”.")
+        else:
+            custom = None
+
+        try:
+            qty = float(raw_qty)
+            price = float(raw_price)
+        except (TypeError, ValueError):
+            raise ValueError("Cantidad o precio no válidos.")
+
+        if qty < 0 or price < 0:
+            raise ValueError("Cantidad y precio no pueden ser negativos.")
+
+        display = custom if product == "Otro" else product
+        key = norm(display)
+        if key in seen_products and qty > 0:
+            raise ValueError(f"El producto “{display}” está repetido en la misma publicación.")
+        seen_products.add(key)
+
+        row = {
+            "id": int(existing_id) if str(existing_id).isdigit() else None,
+            "product": product,
+            "custom_product": custom,
+            "quantity": qty,
+            "unit": unit,
+            "price": price,
+            "remove": str(existing_id) in removes if existing_id else False,
+        }
+        rows.append(row)
+
+    if not rows:
+        raise ValueError("Añade al menos un producto.")
+
+    return rows
+
+
 def visible_message_condition():
     return or_(
-        and_(
-            Message.sender_id == current_user.id,
-            Message.hidden_by_sender.is_(False),
-        ),
-        and_(
-            Message.receiver_id == current_user.id,
-            Message.hidden_by_receiver.is_(False),
-        ),
+        and_(Message.sender_id == current_user.id, Message.hidden_by_sender.is_(False)),
+        and_(Message.receiver_id == current_user.id, Message.hidden_by_receiver.is_(False)),
     )
+
 
 def register_routes(app):
     @app.context_processor
@@ -208,8 +385,8 @@ def register_routes(app):
                 read_at=None,
                 hidden_by_receiver=False,
             ).count()
+
         return dict(
-            MUNICIPIOS=MUNICIPIOS,
             PRODUCTOS=PRODUCTOS,
             PROVINCIAS=PROVINCIAS,
             OWNER_WHATSAPP=current_app.config["OWNER_WHATSAPP"],
@@ -243,18 +420,44 @@ def register_routes(app):
         kind = request.args.get("kind", "")
         province = request.args.get("province", "")
         municipality = request.args.get("municipality", "")
-        qry = Listing.query.join(User).filter(Listing.active.is_(True), User.approved.is_(True))
+
+        qry = Listing.query.join(User).filter(
+            Listing.active.is_(True),
+            User.approved.is_(True),
+            Listing.items.any(and_(
+                ListingItem.active.is_(True),
+                ListingItem.quantity > 0,
+            )),
+        )
+
         if q:
-            qry = qry.filter(or_(Listing.product.ilike(f"%{q}%"), Listing.custom_product.ilike(f"%{q}%")))
+            qry = qry.filter(Listing.items.any(and_(
+                ListingItem.active.is_(True),
+                ListingItem.quantity > 0,
+                or_(
+                    ListingItem.product.ilike(f"%{q}%"),
+                    ListingItem.custom_product.ilike(f"%{q}%"),
+                ),
+            )))
+
         if kind in KINDS:
             qry = qry.filter(Listing.kind == kind)
+
         if province in PROVINCIAS:
             qry = qry.filter(Listing.province == province)
             if municipality in PROVINCIAS[province]:
                 qry = qry.filter(Listing.municipality == municipality)
         else:
             province = municipality = ""
-        return render_template("index.html", listings=qry.order_by(Listing.created_at.desc()).all(), q=q, kind=kind, province=province, municipality=municipality)
+
+        return render_template(
+            "index.html",
+            listings=qry.order_by(Listing.created_at.desc()).all(),
+            q=q,
+            kind=kind,
+            province=province,
+            municipality=municipality,
+        )
 
     @app.route("/register", methods=["GET","POST"])
     def register():
@@ -262,6 +465,7 @@ def register_routes(app):
             if not verify_turnstile():
                 flash("No pudimos verificar que eres una persona. Inténtalo de nuevo.", "danger")
                 return redirect(url_for("register"))
+
             d = request.form
             full_name = clean_text(d.get("full_name"), 120)
             phone = clean_text(d.get("phone"), 30)
@@ -270,6 +474,7 @@ def register_routes(app):
             province = d.get("province", "")
             municipality = d.get("municipality", "")
             address = clean_text(d.get("address"), 255)
+
             if len(full_name) < 3 or len(phone) < 6 or len(address) < 4:
                 flash("Revisa nombre, teléfono y dirección.", "danger")
                 return redirect(url_for("register"))
@@ -282,6 +487,7 @@ def register_routes(app):
             if User.query.filter_by(phone=phone).first():
                 flash("Ese teléfono ya está registrado.", "danger")
                 return redirect(url_for("register"))
+
             u = User(
                 full_name=full_name,
                 phone=phone,
@@ -296,8 +502,10 @@ def register_routes(app):
             db.session.add(u)
             db.session.commit()
             login_user(u)
+
             flash("Registro completado. Solicita tu activación por WhatsApp.", "success")
             return redirect(url_for("pending"))
+
         return render_template("register.html")
 
     @app.route("/pending")
@@ -305,29 +513,42 @@ def register_routes(app):
     def pending():
         if current_user.approved:
             return redirect(url_for("dashboard"))
-        text = f"Hola, soy {current_user.full_name}. Me registré en ConectaCuba con el teléfono {current_user.phone}, como {current_user.role}, en {current_user.municipality}, {current_user.province}. Quiero solicitar la activación de mi cuenta."
+
+        text = (
+            f"Hola, soy {current_user.full_name}. Me registré en ConectaCuba con el teléfono "
+            f"{current_user.phone}, como {current_user.role}, en {current_user.municipality}, "
+            f"{current_user.province}. Quiero solicitar la activación de mi cuenta."
+        )
         return render_template("pending.html", text=text)
 
     @app.route("/login", methods=["GET","POST"])
     def login():
         if request.method == "POST":
             key = client_ip()
+
             if login_rate_limited(key):
                 flash("Demasiados intentos. Espera unos minutos.", "danger")
                 return redirect(url_for("login"))
+
             if not verify_turnstile():
                 record_login_failure(key)
                 flash("No pudimos verificar que eres una persona.", "danger")
                 return redirect(url_for("login"))
-            u = User.query.filter_by(phone=clean_text(request.form.get("phone"), 30)).first()
+
+            u = User.query.filter_by(
+                phone=clean_text(request.form.get("phone"), 30)
+            ).first()
+
             if not u or not u.check_password(request.form.get("password", "")):
                 record_login_failure(key)
                 flash("Credenciales incorrectas.", "danger")
                 return redirect(url_for("login"))
+
             clear_login_failures(key)
             login_user(u)
             session.permanent = True
             return redirect(url_for("pending" if not u.approved else "dashboard"))
+
         return render_template("login.html")
 
     @app.route("/logout")
@@ -342,6 +563,7 @@ def register_routes(app):
     def dashboard():
         if not current_user.approved:
             return redirect(url_for("pending"))
+
         active_listings = Listing.query.filter_by(
             owner_id=current_user.id,
             active=True,
@@ -370,159 +592,193 @@ def register_routes(app):
         if request.method == "POST":
             d = request.form
             kind = d.get("kind", "")
-            product = d.get("product", "")
-            custom_product = clean_text(d.get("custom_product"), 120)
             province = d.get("province", "")
             municipality = d.get("municipality", "")
-            unit = d.get("unit", "")
             coverage = d.get("coverage", "")
             description = clean_text(d.get("description"), 1200)
+
+            if kind not in KINDS or coverage not in COVERAGES or not valid_location(province, municipality):
+                flash("Tipo, provincia, municipio o disponibilidad no válidos.", "danger")
+                return redirect(url_for("publish"))
+
             try:
-                quantity = float(d.get("quantity", ""))
-                price = float(d.get("price", ""))
-            except (TypeError, ValueError):
-                flash("Cantidad o precio no válidos.", "danger")
+                rows = parse_product_rows(d)
+            except ValueError as e:
+                flash(str(e), "danger")
                 return redirect(url_for("publish"))
 
-            if kind not in KINDS or product not in PRODUCTOS or unit not in UNITS or coverage not in COVERAGES or not valid_location(province, municipality):
-                flash("Hay datos no válidos en la publicación.", "danger")
-                return redirect(url_for("publish"))
-            if product == "Otro" and len(custom_product) < 2:
-                flash("Especifica el producto cuando eliges “Otro”.", "danger")
-                return redirect(url_for("publish"))
-            if product != "Otro":
-                custom_product = None
-            if quantity <= 0 or price < 0:
-                flash("Cantidad y precio deben ser válidos.", "danger")
+            active_rows = [x for x in rows if x["quantity"] > 0]
+            if not active_rows:
+                flash("Al menos un producto debe tener cantidad mayor que 0.", "danger")
                 return redirect(url_for("publish"))
 
-            item = Listing(
+            first = active_rows[0]
+            listing = Listing(
                 kind=kind,
-                product=product,
-                custom_product=custom_product,
-                quantity=quantity,
-                unit=unit,
-                price=price,
+                product=first["product"],
+                custom_product=first["custom_product"],
+                quantity=first["quantity"],
+                unit=first["unit"],
+                price=first["price"],
                 province=province,
                 municipality=municipality,
                 coverage=coverage,
                 description=description,
                 owner_id=current_user.id,
+                active=True,
             )
-            db.session.add(item)
-            db.session.commit()
+            db.session.add(listing)
+            db.session.flush()
 
-            for other, score, level in matches_for(item)[:10]:
-                a_id, b_id = context_pair_ids(item.id, other.id)
-
-                db.session.add(Notification(
-                    user_id=current_user.id,
-                    listing_id=other.id,
-                    context_listing_a_id=a_id,
-                    context_listing_b_id=b_id,
-                    message=f"{level} para tu {item.display_kind.lower()} de {product_name(item)}: {other.display_kind.lower()} en {other.municipality}, {other.province}.",
+            for row in active_rows:
+                db.session.add(ListingItem(
+                    listing_id=listing.id,
+                    product=row["product"],
+                    custom_product=row["custom_product"],
+                    quantity=row["quantity"],
+                    unit=row["unit"],
+                    price=row["price"],
+                    active=True,
                 ))
 
-                db.session.add(Notification(
-                    user_id=other.owner_id,
-                    listing_id=item.id,
-                    context_listing_a_id=a_id,
-                    context_listing_b_id=b_id,
-                    message=f"{level} para tu {other.display_kind.lower()} de {product_name(other)}: nueva {item.display_kind.lower()} en {item.municipality}, {item.province}.",
-                ))
-
+            db.session.flush()
+            make_match_notifications(listing)
             db.session.commit()
-            return redirect(url_for("matches", listing_id=item.id))
+
+            return redirect(url_for("matches", listing_id=listing.id))
+
         return render_template("publish.html")
 
     @app.route("/listing/<int:listing_id>/edit", methods=["GET","POST"])
     @login_required
     @approved_required
     def edit_listing(listing_id):
-        item = db.session.get(Listing, listing_id)
-        if not item or item.owner_id != current_user.id:
+        listing = db.session.get(Listing, listing_id)
+        if not listing or listing.owner_id != current_user.id:
             abort(404)
 
         if request.method == "POST":
-            d = request.form
+            coverage = request.form.get("coverage", "")
+            description = clean_text(request.form.get("description"), 1200)
+
+            if coverage not in COVERAGES:
+                flash("Disponibilidad geográfica no válida.", "danger")
+                return redirect(url_for("edit_listing", listing_id=listing_id))
+
             try:
-                quantity = float(d.get("quantity", ""))
-                price = float(d.get("price", ""))
-            except (TypeError, ValueError):
-                flash("Cantidad o precio no válidos.", "danger")
+                rows = parse_product_rows(request.form)
+            except ValueError as e:
+                flash(str(e), "danger")
                 return redirect(url_for("edit_listing", listing_id=listing_id))
 
-            coverage = d.get("coverage", "")
-            description = clean_text(d.get("description"), 1200)
+            existing = {x.id: x for x in listing.items}
 
-            if quantity < 0 or price < 0 or coverage not in COVERAGES:
-                flash("Revisa cantidad, precio y disponibilidad.", "danger")
-                return redirect(url_for("edit_listing", listing_id=listing_id))
+            for row in rows:
+                if row["id"]:
+                    item = existing.get(row["id"])
+                    if not item:
+                        abort(403)
 
-            item.quantity = quantity
-            item.price = price
-            item.coverage = coverage
-            item.description = description
+                    if row["remove"] or row["quantity"] == 0:
+                        item.active = False
+                        item.quantity = 0
+                    else:
+                        item.product = row["product"]
+                        item.custom_product = row["custom_product"]
+                        item.quantity = row["quantity"]
+                        item.unit = row["unit"]
+                        item.price = row["price"]
+                        item.active = True
+                elif not row["remove"] and row["quantity"] > 0:
+                    db.session.add(ListingItem(
+                        listing_id=listing.id,
+                        product=row["product"],
+                        custom_product=row["custom_product"],
+                        quantity=row["quantity"],
+                        unit=row["unit"],
+                        price=row["price"],
+                        active=True,
+                    ))
 
-            if quantity == 0:
-                item.active = False
-                cleanup_listing_matches(item.id)
-                flash("La publicación se cerró porque ya no queda producto disponible.", "success")
+            listing.coverage = coverage
+            listing.description = description
+            db.session.flush()
+
+            listing.active = bool(listing.active_items)
+            listing.sync_legacy_fields()
+
+            cleanup_listing_notifications(listing.id)
+            db.session.flush()
+
+            if listing.active:
+                make_match_notifications(listing)
+                flash("Publicación actualizada y coincidencias recalculadas.", "success")
             else:
-                item.active = True
-                flash("Publicación actualizada.", "success")
+                flash("La publicación quedó cerrada porque no tiene productos disponibles.", "success")
 
             db.session.commit()
             return redirect(url_for("dashboard"))
 
-        return render_template("edit_listing.html", listing=item)
+        return render_template("edit_listing.html", listing=listing)
 
     @app.route("/listing/<int:listing_id>/sold", methods=["POST"])
     @login_required
     @approved_required
     def mark_listing_sold(listing_id):
-        item = db.session.get(Listing, listing_id)
-        if not item or item.owner_id != current_user.id:
+        listing = db.session.get(Listing, listing_id)
+        if not listing or listing.owner_id != current_user.id:
             abort(404)
 
-        item.quantity = 0
-        item.active = False
-        cleanup_listing_matches(item.id)
+        for item in listing.items:
+            item.active = False
+            item.quantity = 0
+
+        listing.active = False
+        listing.quantity = 0
+        cleanup_listing_notifications(listing.id)
         db.session.commit()
 
-        flash("Publicación marcada como vendida/finalizada. Sus coincidencias activas fueron retiradas.", "success")
+        flash("Publicación marcada como vendida/finalizada.", "success")
         return redirect(url_for("dashboard"))
 
     @app.route("/listing/<int:listing_id>/delete", methods=["POST"])
     @login_required
     @approved_required
     def delete_listing(listing_id):
-        item = db.session.get(Listing, listing_id)
-        if not item or item.owner_id != current_user.id:
+        listing = db.session.get(Listing, listing_id)
+        if not listing or listing.owner_id != current_user.id:
             abort(404)
 
-        item.active = False
-        cleanup_listing_matches(item.id)
+        for item in listing.items:
+            item.active = False
+
+        listing.active = False
+        cleanup_listing_notifications(listing.id)
         db.session.commit()
 
-        flash("Publicación eliminada del mercado. Ya no generará coincidencias.", "success")
+        flash("Publicación eliminada del mercado.", "success")
         return redirect(url_for("dashboard"))
 
     @app.route("/matches/<int:listing_id>")
     @login_required
     @approved_required
     def matches(listing_id):
-        item = db.session.get(Listing, listing_id)
-        if not item or item.owner_id != current_user.id:
+        listing = db.session.get(Listing, listing_id)
+        if not listing or listing.owner_id != current_user.id:
             abort(403)
-        return render_template("matches.html", listing=item, matches=matches_for(item))
+
+        return render_template(
+            "matches.html",
+            listing=listing,
+            matches=matches_for(listing),
+        )
 
     @app.route("/listing/<int:listing_id>")
     def detail(listing_id):
-        item = db.session.get(Listing, listing_id)
-        if not item:
+        listing = db.session.get(Listing, listing_id)
+        if not listing:
             abort(404)
-        return render_template("detail.html", listing=item)
+        return render_template("detail.html", listing=listing)
 
     @app.route("/notification/<int:notification_id>/open")
     @login_required
@@ -531,12 +787,14 @@ def register_routes(app):
         n = db.session.get(Notification, notification_id)
         if not n or n.user_id != current_user.id:
             abort(404)
+
         n.read = True
         db.session.commit()
 
         if n.context_listing_a_id and n.context_listing_b_id:
             a = db.session.get(Listing, n.context_listing_a_id)
             b = db.session.get(Listing, n.context_listing_b_id)
+
             if a and b:
                 owners = {a.owner_id, b.owner_id}
                 if current_user.id in owners:
@@ -558,9 +816,14 @@ def register_routes(app):
     def notifications():
         if not current_user.approved:
             return redirect(url_for("pending"))
-        notes = Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).all()
+
+        notes = Notification.query.filter_by(
+            user_id=current_user.id
+        ).order_by(Notification.created_at.desc()).all()
+
         for n in notes:
             n.read = True
+
         db.session.commit()
         return render_template("notifications.html", notes=notes)
 
@@ -574,10 +837,12 @@ def register_routes(app):
 
         seen = set()
         conversations = []
+
         for m in msgs:
             partner_id = m.receiver_id if m.sender_id == current_user.id else m.sender_id
             context_key = (m.context_listing_a_id, m.context_listing_b_id)
             key = (partner_id, context_key)
+
             if key in seen:
                 continue
 
@@ -596,6 +861,15 @@ def register_routes(app):
 
             context_a = db.session.get(Listing, m.context_listing_a_id) if m.context_listing_a_id else None
             context_b = db.session.get(Listing, m.context_listing_b_id) if m.context_listing_b_id else None
+            pairs = matched_item_pairs(context_a, context_b) if context_a and context_b else []
+
+            products = []
+            seen_products = set()
+            for p in pairs:
+                k = norm(p["product"])
+                if k not in seen_products:
+                    seen_products.add(k)
+                    products.append(p["product"])
 
             conversations.append({
                 "user": partner,
@@ -603,6 +877,7 @@ def register_routes(app):
                 "unread_count": unread_count,
                 "context_a": context_a,
                 "context_b": context_b,
+                "matched_products": products,
             })
             seen.add(key)
 
@@ -621,6 +896,15 @@ def register_routes(app):
         a_id, b_id = context_pair_ids(a_id, b_id)
         context_a, context_b = resolve_chat_context(other, a_id, b_id)
 
+        pairs = matched_item_pairs(context_a, context_b) if context_a and context_b else []
+        products = []
+        seen_products = set()
+        for p in pairs:
+            k = norm(p["product"])
+            if k not in seen_products:
+                seen_products.add(k)
+                products.append(p["product"])
+
         if request.method == "POST":
             body = clean_text(request.form.get("body"), 2000)
             if body:
@@ -634,13 +918,13 @@ def register_routes(app):
                 db.session.add(msg)
 
                 if context_a and context_b:
-                    product = product_name(context_a)
+                    context_text = ", ".join(products[:4]) if products else "una coincidencia cerrada"
                     db.session.add(Notification(
                         user_id=other.id,
                         listing_id=context_a.id if context_a.owner_id == current_user.id else context_b.id,
                         context_listing_a_id=a_id,
                         context_listing_b_id=b_id,
-                        message=f"Nuevo mensaje de {current_user.full_name} sobre la coincidencia de {product}.",
+                        message=f"Nuevo mensaje de {current_user.full_name} sobre {context_text}.",
                     ))
                 else:
                     db.session.add(Notification(
@@ -691,6 +975,8 @@ def register_routes(app):
             msgs=msgs,
             context_a=context_a,
             context_b=context_b,
+            matched_pairs=pairs,
+            matched_products=products,
             context_a_id=a_id,
             context_b_id=b_id,
         )
@@ -811,18 +1097,22 @@ def register_routes(app):
             if login_rate_limited(key):
                 flash("Demasiados intentos. Espera unos minutos.", "danger")
                 return redirect(url_for("admin_login"))
+
             if not verify_turnstile():
                 record_login_failure(key)
                 flash("No pudimos verificar que eres una persona.", "danger")
                 return redirect(url_for("admin_login"))
+
             if request.form.get("password") == current_app.config["ADMIN_PASSWORD"]:
                 clear_login_failures(key)
                 session.clear()
                 session["admin_ok"] = True
                 csrf_token()
                 return redirect(url_for("admin"))
+
             record_login_failure(key)
             flash("Contraseña incorrecta.", "danger")
+
         return render_template("admin_login.html")
 
     @app.route("/admin")

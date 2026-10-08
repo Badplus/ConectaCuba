@@ -4,7 +4,7 @@
 <h2>Hola, {{current_user.full_name}}</h2>
 <p>Cuenta activa · {{current_user.role}} · {{current_user.municipality}}, {{current_user.province}}
 {% if current_user.is_admin %} · <span class="pill">ADMINISTRADOR</span>{% endif %}</p>
-<a class="btn primary" href="{{url_for('publish')}}">+ Publicar</a>
+<a class="btn primary" href="{{url_for('publish')}}">+ Nueva publicación</a>
 {% if current_user.is_admin %}<a class="btn secondary" href="{{url_for('admin')}}">Administración</a>{% endif %}
 </div>
 
@@ -12,26 +12,30 @@
 <div class="list">
 {% for x in listings %}
 <div class="row">
-<div>
-<b>{{x.display_product}}</b>
-<div class="muted">{{x.display_kind}} · {{x.quantity}} {{x.unit}} · {{x.price}} CUP · {{x.municipality}}, {{x.province}}</div>
+<div style="flex:1">
+<span class="pill {{'offer' if x.kind=='oferta' else 'demand'}}">{{x.display_kind|upper}}</span>
+<b>{{x.active_items|length}} producto{% if x.active_items|length != 1 %}s{% endif %}</b>
+<div class="product-summary">
+{% for item in x.active_items %}
+<span>{{item.display_product}} · {{item.quantity}} {{item.unit}} · {{'%.2f'|format(item.price)}} CUP</span>
+{% endfor %}
+</div>
+<div class="muted">{{x.municipality}}, {{x.province}}</div>
 </div>
 <div style="display:flex;gap:8px;flex-wrap:wrap">
 <a class="btn secondary" href="{{url_for('matches',listing_id=x.id)}}">Coincidencias</a>
 <a class="btn secondary" href="{{url_for('edit_listing',listing_id=x.id)}}">Actualizar</a>
-<form method="post" action="{{url_for('mark_listing_sold',listing_id=x.id)}}" onsubmit="return confirm('¿Marcar esta publicación como vendida/finalizada?');">
+<form method="post" action="{{url_for('mark_listing_sold',listing_id=x.id)}}" onsubmit="return confirm('¿Marcar todos los productos como vendidos/finalizados?');">
 <input type="hidden" name="_csrf" value="{{csrf_token()}}">
-<button class="btn">Vendido / agotado</button>
+<button class="btn">Todo vendido</button>
 </form>
-<form method="post" action="{{url_for('delete_listing',listing_id=x.id)}}" onsubmit="return confirm('¿Eliminar esta publicación del mercado?');">
+<form method="post" action="{{url_for('delete_listing',listing_id=x.id)}}" onsubmit="return confirm('¿Eliminar toda esta publicación del mercado?');">
 <input type="hidden" name="_csrf" value="{{csrf_token()}}">
 <button class="btn danger">Eliminar</button>
 </form>
 </div>
 </div>
-{% else %}
-<div class="card">Sin publicaciones activas.</div>
-{% endfor %}
+{% else %}<div class="card">Sin publicaciones activas.</div>{% endfor %}
 </div>
 
 {% if archived_listings %}
@@ -40,12 +44,14 @@
 {% for x in archived_listings %}
 <div class="row">
 <div>
-<b>{{x.display_product}}</b>
-<div class="muted">{{x.display_kind}} · {{x.quantity}} {{x.unit}} · {{x.price}} CUP · CERRADA</div>
+<b>{{x.display_kind}} · Publicación cerrada</b>
+<div class="product-summary">
+{% for item in x.items %}
+<span>{{item.display_product}}{% if item.quantity > 0 %} · {{item.quantity}} {{item.unit}}{% endif %}</span>
+{% endfor %}
 </div>
-{% if x.quantity > 0 %}
-<a class="btn secondary" href="{{url_for('edit_listing',listing_id=x.id)}}">Reactivar / actualizar</a>
-{% endif %}
+</div>
+<a class="btn secondary" href="{{url_for('edit_listing',listing_id=x.id)}}">Revisar / reactivar</a>
 </div>
 {% endfor %}
 </div>

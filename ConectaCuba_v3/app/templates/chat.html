@@ -18,21 +18,27 @@
 
 {% if context_a and context_b %}
 <div class="match-context">
-<div class="pill">{% if context_a.active and context_b.active %}COINCIDENCIA ACTUAL{% else %}COINCIDENCIA CERRADA{% endif %}</div>
-<h3 style="margin-bottom:8px">{{context_a.display_product}}</h3>
-<div><b>Publicación 1 — {{context_a.display_kind}}</b>: {{context_a.quantity}} {{context_a.unit}} · {{context_a.price}} CUP · {{context_a.municipality}}, {{context_a.province}}</div>
-<div style="margin-top:5px"><b>Publicación 2 — {{context_b.display_kind}}</b>: {{context_b.quantity}} {{context_b.unit}} · {{context_b.price}} CUP · {{context_b.municipality}}, {{context_b.province}}</div>
-<div class="muted" style="margin-top:8px">Todos los mensajes de este chat pertenecen únicamente a esta coincidencia.</div>
+<div class="pill">{% if matched_products %}COINCIDENCIA ACTUAL{% else %}COINCIDENCIA CERRADA{% endif %}</div>
+{% if matched_products %}
+<h3>{{matched_products|join(', ')}}</h3>
+<div class="match-products">
+{% for p in matched_pairs %}
+<div>
+<strong>{{p.product}}</strong>:
+{{context_a.display_kind}} {{p.a.quantity}} {{p.a.unit}} · {{p.a.price}} CUP
+↔
+{{context_b.display_kind}} {{p.b.quantity}} {{p.b.unit}} · {{p.b.price}} CUP
+</div>
+{% endfor %}
+</div>
+{% else %}
+<h3>Ya no hay productos activos coincidentes</h3>
+<div class="muted">El historial del chat se conserva, pero esta coincidencia ya no participa en el mercado.</div>
+{% endif %}
 </div>
 {% endif %}
 
 <div id="messages" style="margin-top:20px;max-height:60vh;overflow-y:auto;padding-right:4px">
-{% if context_a and context_b %}
-<div class="conversation-context-label">
-<strong>Conversación:</strong> {{context_a.display_kind}} de {{context_a.display_product}} ↔ {{context_b.display_kind}} de {{context_b.display_product}}
-</div>
-{% endif %}
-
 {% for m in msgs %}
 <div class="msg {{'mine' if m.sender_id==current_user.id else 'theirs'}}" data-message-id="{{m.id}}">
 <div class="message-body">{% if m.deleted_for_all %}<i>Mensaje eliminado</i>{% else %}{{m.body}}{% endif %}</div>
@@ -44,14 +50,12 @@
 </form>
 {% endif %}
 </div>
-{% else %}
-<div id="empty-chat" class="muted">Aún no hay mensajes.</div>
-{% endfor %}
+{% else %}<div id="empty-chat" class="muted">Aún no hay mensajes.</div>{% endfor %}
 </div>
 
 <form id="chat-form" method="post" style="margin-top:20px">
 <input type="hidden" id="csrf-token" name="_csrf" value="{{csrf_token()}}">
-<input id="message-input" name="body" maxlength="2000" placeholder="{% if context_a %}Escribe sobre {{context_a.display_product}}{% else %}Escribe un mensaje{% endif %}" autocomplete="off" required>
+<input id="message-input" name="body" maxlength="2000" placeholder="{% if matched_products %}Escribe sobre {{matched_products|join(', ')}}{% else %}Escribe un mensaje{% endif %}" autocomplete="off" required>
 <br><br><button id="send-button" class="btn primary">Enviar</button>
 </form>
 </div></div>
@@ -66,6 +70,7 @@
  url="{{url_for('chat_messages',user_id=other.id,a=context_a_id,b=context_b_id)}}",
  send="{{url_for('chat',user_id=other.id,a=context_a_id,b=context_b_id)}}";
  let last=0,polling=false;
+
  function scan(){document.querySelectorAll('[data-message-id]').forEach(e=>{last=Math.max(last,Number(e.dataset.messageId||0));});}
  function add(m){
   if(document.querySelector(`[data-message-id="${m.id}"]`))return;

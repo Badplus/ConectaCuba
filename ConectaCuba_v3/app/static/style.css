@@ -81,3 +81,19 @@ th,td{padding:9px;border-bottom:1px solid #eee;text-align:left;font-size:13px}
   text-decoration:underline;
 }
 .msg-delete:hover{opacity:.75}
+/* Publicaciones multiproducto */
+.product-editor{margin:12px 0;padding:14px}
+.product-editor-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.product-closed{opacity:.72}
+.remove-check{display:flex;align-items:center;gap:6px;margin:0;font-weight:600}
+.remove-check input{width:auto}
+.product-summary{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.product-summary span{background:#f2f9f5;border:1px solid #d8e9df;border-radius:999px;padding:5px 9px;font-size:12px}
+.match-products{display:grid;gap:6px;margin-top:10px}
+.match-products>div{padding:8px 10px;background:#f5f8f6;border-radius:10px}
+.product-detail-list{display:grid;gap:8px;margin:18px 0}
+.product-detail-row{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:10px;padding:12px;border:1px solid #dfe7e1;border-radius:12px}
+@media(max-width:760px){
+ .product-editor-head{align-items:flex-start;flex-direction:column}
+ .product-detail-row{grid-template-columns:1fr}
+}

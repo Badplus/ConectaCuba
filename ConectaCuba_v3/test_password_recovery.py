@@ -41,7 +41,7 @@ class RecoveryTests(unittest.TestCase):
   self.client.post('/admin/login',data={'_csrf':token,'password':'recovery-admin-tests-only'})
   response=self.client.post('/admin/password-resets/'+str(reset_id)+'/approve',data={'_csrf':token})
   self.assertEqual(response.status_code,200)
-  pin=re.search(r'letter-spacing:.3em">(\\d{5})</p>',response.get_data(as_text=True)).group(1)
+  pin=re.search(r'letter-spacing:.3em">(\d{5})</p>',response.get_data(as_text=True)).group(1)
   self.assertEqual(self.client.post('/verify-recovery-pin',data={'_csrf':token,'phone':'12345678','pin':pin}).status_code,302)
   self.assertEqual(self.client.get('/new-password').status_code,200)
   self.assertEqual(self.client.post('/new-password',data={'_csrf':token,'new_password':'new-password-1234','confirm_password':'different-password'}).status_code,200)
@@ -57,7 +57,7 @@ class RecoveryTests(unittest.TestCase):
   with self.app.app_context(): reset_id=PasswordResetRequest.query.first().id
   self.client.post('/admin/login',data={'_csrf':token,'password':'recovery-admin-tests-only'})
   response=self.client.post('/admin/password-resets/'+str(reset_id)+'/approve',data={'_csrf':token})
-  pin=re.search(r'letter-spacing:.3em">(\\d{5})</p>',response.get_data(as_text=True)).group(1)
+  pin=re.search(r'letter-spacing:.3em">(\d{5})</p>',response.get_data(as_text=True)).group(1)
   wrong='00000' if pin!='00000' else '99999'
   for _ in range(5):
    self.client.post('/verify-recovery-pin',data={'_csrf':token,'phone':'12345678','pin':wrong})

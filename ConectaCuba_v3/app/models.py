@@ -53,6 +53,7 @@ class Listing(db.Model):
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     owner_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    photo_path = db.Column(db.String(255))
     province = db.Column(db.String, nullable=False, server_default="Santiago de Cuba")
 
     owner = db.relationship("User", backref="listings")

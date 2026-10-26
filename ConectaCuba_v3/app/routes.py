@@ -1,3 +1,4 @@
+import hmac
 import math
 import json
 from urllib.parse import urlencode
@@ -210,7 +211,7 @@ def register_routes(app):
  @app.route('/admin/login',methods=['GET','POST'])
  def admin_login():
   if request.method=='POST' and not turnstile_valid(): abort(400, description='Verificación de seguridad fallida.')
-  if request.method=='POST' and request.form.get('password')==current_app.config['ADMIN_PASSWORD']: session['admin_ok']=True; return redirect(url_for('admin'))
+  if request.method=='POST' and current_app.config['ADMIN_PASSWORD'] and hmac.compare_digest(request.form.get('password',''), current_app.config['ADMIN_PASSWORD']): session['admin_ok']=True; return redirect(url_for('admin'))
   return render_template('admin_login.html')
 
  @app.route('/admin')
@@ -222,6 +223,7 @@ def register_routes(app):
  def admin_toggle(user_id):
   u=db.session.get(User,user_id)
   if not u: abort(404)
+  if u.is_admin: abort(403, description='No se puede modificar una cuenta administrativa protegida.')
   u.approved=not u.approved; u.approved_at=datetime.utcnow() if u.approved else None
   if u.approved: db.session.add(Notification(user_id=u.id,message='Tu cuenta ha sido ACTIVADA por el administrador.'))
   db.session.commit(); return redirect(url_for('admin'))
@@ -233,5 +235,5 @@ def register_routes(app):
   if not s: abort(404)
   try: value=float(request.form['commission'])
   except (ValueError, KeyError): abort(400)
-  if not (0 <= value <= 100): abort(400)
+  if not (math.isfinite(value) and 0 <= value <= 100): abort(400)
   s.commission=value; db.session.commit(); return redirect(url_for('admin'))

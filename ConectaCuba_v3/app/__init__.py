@@ -13,6 +13,8 @@ PRODUCTOS=["Plátano","Yuca","Boniato","Malanga","Arroz","Frijoles","Maíz","Tom
 def create_app():
  app=Flask(__name__,instance_relative_config=True)
  app.config['SECRET_KEY']=os.getenv('SECRET_KEY','dev-secret-change-me')
+ app.config['SESSION_COOKIE_SECURE']=not app.debug and os.getenv('SESSION_COOKIE_SECURE','true').lower() != 'false'
+ app.config['SESSION_COOKIE_SAMESITE']='Lax'
  db_url=os.getenv('DATABASE_URL','sqlite:///conectacuba_v3.db')
  if db_url.startswith('postgres://'): db_url=db_url.replace('postgres://','postgresql+psycopg://',1)
  elif db_url.startswith('postgresql://'): db_url=db_url.replace('postgresql://','postgresql+psycopg://',1)

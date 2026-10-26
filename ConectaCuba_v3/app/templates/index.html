@@ -25,6 +25,7 @@
       {% if x.kind == 'oferta' %}
         {% set ns.count = ns.count + 1 %}
         <a class="row" href="{{ url_for('detail', listing_id=x.id) }}">
+          {% if x.photo_path %}<img src="{{ product_photo_url(x.photo_path) }}" alt="Foto de {{ x.display_product }}" loading="lazy" style="width:90px;height:90px;object-fit:cover;border-radius:8px;margin-right:12px">{% endif %}
           <div><span class="pill offer">VENTA</span> <b>{{ x.display_product }}</b>
           <div class="muted">{{ x.quantity }} {{ x.unit }} · {{ '%.2f'|format(x.price) }} CUP · {{ x.municipality }}</div></div>
         </a>

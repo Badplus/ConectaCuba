@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block title %}Fotografías de productos | Mercado BETO Plus{% endblock %}
+{% block content %}
+<div class="container"><h2>Fotografías de productos</h2>
+<p>Como administrador general puedes añadir o sustituir una fotografía por producto.</p>
+<div class="list">{% for x in products %}<div class="row"><div><b>{{ x.display_product }}</b><div class="muted">{{ x.owner.full_name }} · {{ x.municipality }}</div></div><a class="btn secondary" href="{{ url_for('upload_product_photo', listing_id=x.id) }}">{{ 'Cambiar foto' if x.photo_path else 'Añadir foto' }}</a></div>{% else %}<p>No hay productos.</p>{% endfor %}</div>
+</div>
+{% endblock %}

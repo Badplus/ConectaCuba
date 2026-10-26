@@ -5,6 +5,8 @@
     <p class="muted">Mercado BETO Plus · Detalle del producto</p>
     <span class="pill {{ 'offer' if listing.kind == 'oferta' else 'demand' }}">{{ 'EN VENTA' if listing.kind == 'oferta' else 'DEMANDA ANTIGUA' }}</span>
     <h1>{{ listing.display_product }}</h1>
+    {% if listing.photo_path %}<img src="{{ product_photo_url(listing.photo_path) }}" alt="Foto de {{ listing.display_product }}" loading="lazy" style="max-width:100%;max-height:420px;object-fit:contain;border-radius:10px">{% endif %}
+    {% if can_manage_photo(listing) %}<p><a class="btn secondary" href="{{ url_for('upload_product_photo', listing_id=listing.id) }}">{{ 'Cambiar fotografía' if listing.photo_path else 'Añadir fotografía' }}</a></p>{% endif %}
     <p><strong>Precio:</strong> {{ '%.2f'|format(listing.price) }} CUP/{{ listing.unit }}</p>
     <p><strong>Cantidad:</strong> {{ listing.quantity }} {{ listing.unit }}</p>
     <p><strong>Municipio:</strong> {{ listing.municipality }}</p>

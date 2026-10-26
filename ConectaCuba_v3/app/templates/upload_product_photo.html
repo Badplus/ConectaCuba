@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Fotografía de producto | Mercado BETO Plus{% endblock %}
+{% block content %}
+<div class="container"><div class="form">
+<h2>Fotografía de {{ listing.display_product }}</h2>
+<p>Solo se permite una fotografía por producto. Al subir otra, se sustituirá la anterior.</p>
+{% if listing.photo_path %}<img src="{{ product_photo_url(listing.photo_path) }}" alt="Foto actual" style="max-width:260px;max-height:260px;object-fit:contain">{% endif %}
+<form method="post" enctype="multipart/form-data">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<label for="photo">Seleccionar imagen (JPG, PNG o WebP; máximo 3 MB)</label>
+<input id="photo" type="file" name="photo" accept="image/jpeg,image/png,image/webp" required>
+<button type="submit" class="btn primary">Guardar fotografía</button>
+</form>
+<p><a href="{{ url_for('detail', listing_id=listing.id) }}">Volver al producto</a></p>
+</div></div>
+{% endblock %}

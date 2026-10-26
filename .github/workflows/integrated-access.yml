@@ -1,7 +1,9 @@
 name: Integrated access and recovery
 on:
   push:
-    branches: [integracion-acceso-recuperacion]
+    branches: [integracion-acceso-recuperacion, recuperacion-pin-admin-v2]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 jobs:
   test:

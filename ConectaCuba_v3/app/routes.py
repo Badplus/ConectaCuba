@@ -1,3 +1,7 @@
+import os
+from io import BytesIO
+from PIL import Image, UnidentifiedImageError
+from urllib.error import HTTPError, URLError
 import hmac
 import json
 from urllib.parse import urlencode
@@ -73,12 +77,32 @@ def turnstile_valid():
   current_app.logger.exception('Error al verificar Turnstile')
   return False
 
+def can_manage_photo(listing):
+ return (current_user.is_authenticated and
+         (current_user.is_admin or (current_user.approved and current_user.role == 'admin_bodega' and listing.owner_id == current_user.id)))
+
+def product_photo_url(path):
+ base=os.getenv('SUPABASE_URL','').rstrip('/')
+ return base + '/storage/v1/object/public/fotos-productos/' + quote(path, safe='/') if base and path else ''
+
+def storage_request(method, path, payload=None, content_type=None):
+ base=os.getenv('SUPABASE_URL','').rstrip('/')
+ key=os.getenv('SUPABASE_SERVICE_ROLE_KEY','')
+ if not base or not key:
+  raise RuntimeError('Falta configurar SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en Render.')
+ url=base+'/storage/v1/object/fotos-productos/'+quote(path,safe='/')
+ headers={'apikey':key,'Authorization':'Bearer '+key}
+ if content_type: headers['Content-Type']=content_type
+ req=Request(url,data=payload,headers=headers,method=method)
+ with urlopen(req,timeout=20) as response:
+  return response.status
+
 def register_routes(app):
  @app.context_processor
  def ctx():
   s=Setting.query.first(); unread=0
   if current_user.is_authenticated: unread=Notification.query.filter_by(user_id=current_user.id,read=False).count()
-  return dict(MUNICIPIOS=MUNICIPIOS,PRODUCTOS=PRODUCTOS,OWNER_WHATSAPP=current_app.config['OWNER_WHATSAPP'],commission=s.commission if s else 0,unread=unread)
+  return dict(can_manage_photo=can_manage_photo,product_photo_url=product_photo_url,MUNICIPIOS=MUNICIPIOS,PRODUCTOS=PRODUCTOS,OWNER_WHATSAPP=current_app.config['OWNER_WHATSAPP'],commission=s.commission if s else 0,unread=unread)
 
  @app.route('/')
  def index():
@@ -314,6 +338,65 @@ def register_routes(app):
   if not item: abort(404)
   if item.owner_id!=current_user.id: abort(403)
   return render_template('matches.html',listing=item,matches=matches_for(item))
+
+ @app.route('/admin/product-photos')
+ @admin_required
+ def admin_products_photos():
+  products=Listing.query.order_by(Listing.created_at.desc()).all()
+  return render_template('admin_product_photos.html',products=products)
+
+ @app.route('/listing/<int:listing_id>/photo',methods=['GET','POST'])
+ @login_required
+ def upload_product_photo(listing_id):
+  item=db.session.get(Listing,listing_id)
+  if not item: abort(404)
+  if not can_manage_photo(item): abort(403)
+  if request.method=='POST':
+   uploaded=request.files.get('photo')
+   if not uploaded or not uploaded.filename:
+    flash('Selecciona una fotografía.','danger')
+    return redirect(url_for('upload_product_photo',listing_id=item.id))
+   content=uploaded.stream.read(3*1024*1024+1)
+   if len(content)>3*1024*1024 or not content:
+    flash('La imagen debe ocupar como máximo 3 MB.','danger')
+    return redirect(url_for('upload_product_photo',listing_id=item.id))
+   try:
+    with Image.open(BytesIO(content)) as img:
+     img.verify()
+    with Image.open(BytesIO(content)) as img:
+     fmt=img.format
+     if img.width>6000 or img.height>6000 or img.width*img.height>20000000:
+      raise ValueError('Imagen demasiado grande')
+   except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+    flash('Fotografía inválida o demasiado grande.','danger')
+    return redirect(url_for('upload_product_photo',listing_id=item.id))
+   types={'JPEG':('jpg','image/jpeg'),'PNG':('png','image/png'),'WEBP':('webp','image/webp')}
+   if fmt not in types:
+    flash('Solo se permiten imágenes JPG, PNG o WebP.','danger')
+    return redirect(url_for('upload_product_photo',listing_id=item.id))
+   ext,mime=types[fmt]
+   new_path=f'producto-{item.id}/{secrets.token_hex(16)}.{ext}'
+   try:
+    storage_request('POST',new_path,content,mime)
+   except (HTTPError,URLError,RuntimeError,TimeoutError) as exc:
+    current_app.logger.warning('Fallo al subir foto de producto %s: %s',item.id,type(exc).__name__)
+    flash('No se pudo guardar la fotografía. Revisa la configuración de almacenamiento.','danger')
+    return redirect(url_for('upload_product_photo',listing_id=item.id))
+   old_path=item.photo_path
+   item.photo_path=new_path
+   try:
+    db.session.commit()
+   except Exception:
+    db.session.rollback()
+    try: storage_request('DELETE',new_path)
+    except Exception: pass
+    raise
+   if old_path:
+    try: storage_request('DELETE',old_path)
+    except Exception: current_app.logger.warning('No se pudo eliminar la foto anterior del producto %s',item.id)
+   flash('Fotografía guardada correctamente.','success')
+   return redirect(url_for('detail',listing_id=item.id))
+  return render_template('upload_product_photo.html',listing=item)
 
  @app.route('/listing/<int:listing_id>')
  def detail(listing_id):

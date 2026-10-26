@@ -1,104 +1,30 @@
-{% extends 'base.html' %}{% block content %}
-<div class="container"><div class="form">
-<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-<div>
-<h2 style="margin-bottom:4px">Chat con {{other.full_name}}</h2>
-<div class="muted">{{other.role|capitalize}} · {{other.municipality}}, {{other.province}}</div>
+{% extends 'base.html' %}
+{% block title %}Chat privado · Mercado BETO Plus{% endblock %}
+{% block content %}
+<div class="container">
+  <div class="card">
+    <p class="muted">Mercado BETO Plus · Mensajería privada</p>
+    <h1>Conversación con {{ other.full_name }}</h1>
+    <p class="muted">Los mensajes de esta conversación solo se muestran a sus participantes.</p>
+    <div class="chat-messages" aria-label="Historial de mensajes" style="display:flex;flex-direction:column;gap:12px;margin:20px 0">
+      {% for msg in msgs %}
+        <div class="msg {{ 'mine' if msg.sender_id == current_user.id else 'theirs' }}" style="max-width:85%;align-self:{{ 'flex-end' if msg.sender_id == current_user.id else 'flex-start' }}">
+          <div class="card" style="padding:12px">
+            <strong>{{ 'Tú' if msg.sender_id == current_user.id else other.full_name }}</strong>
+            <p style="white-space:pre-wrap;overflow-wrap:anywhere">{{ msg.body }}</p>
+            <small class="muted">{{ msg.created_at.strftime('%d/%m/%Y %H:%M') if msg.created_at else '' }}</small>
+          </div>
+        </div>
+      {% else %}
+        <p class="muted">Aún no hay mensajes. Puedes iniciar la conversación.</p>
+      {% endfor %}
+    </div>
+    <form method="post" action="{{ url_for('chat', user_id=other.id) }}">
+      <label for="body">Escribe tu mensaje</label>
+      <textarea id="body" name="body" rows="3" maxlength="5000" required placeholder="Escribe aquí tu mensaje..."></textarea>
+      <button class="btn primary" type="submit">Enviar mensaje</button>
+    </form>
+    <p><a href="{{ url_for('index') }}">Volver al mercado</a></p>
+  </div>
 </div>
-<div style="display:flex;gap:8px;flex-wrap:wrap">
-<a class="btn" href="{{url_for('chats')}}">← Mis chats</a>
-<form method="post" action="{{url_for('delete_chat',user_id=other.id)}}" onsubmit="return confirm('¿Eliminar este chat de tu bandeja?');">
-<input type="hidden" name="_csrf" value="{{csrf_token()}}">
-<input type="hidden" name="a" value="{{context_a_id or ''}}">
-<input type="hidden" name="b" value="{{context_b_id or ''}}">
-<button class="btn danger" type="submit">Eliminar chat</button>
-</form>
-</div>
-</div>
-
-{% if context_a and context_b %}
-<div class="match-context">
-<div class="pill">{% if matched_products %}COINCIDENCIA ACTUAL{% else %}COINCIDENCIA CERRADA{% endif %}</div>
-{% if matched_products %}
-<h3>{{matched_products|join(', ')}}</h3>
-<div class="match-products">
-{% for p in matched_pairs %}
-<div>
-<strong>{{p.product}}</strong>:
-{{context_a.display_kind}} {{p.a.quantity}} {{p.a.unit}} · {{p.a.price}} CUP
-↔
-{{context_b.display_kind}} {{p.b.quantity}} {{p.b.unit}} · {{p.b.price}} CUP
-</div>
-{% endfor %}
-</div>
-{% else %}
-<h3>Ya no hay productos activos coincidentes</h3>
-<div class="muted">El historial del chat se conserva, pero esta coincidencia ya no participa en el mercado.</div>
-{% endif %}
-</div>
-{% endif %}
-
-<div id="messages" style="margin-top:20px;max-height:60vh;overflow-y:auto;padding-right:4px">
-{% for m in msgs %}
-<div class="msg {{'mine' if m.sender_id==current_user.id else 'theirs'}}" data-message-id="{{m.id}}">
-<div class="message-body">{% if m.deleted_for_all %}<i>Mensaje eliminado</i>{% else %}{{m.body}}{% endif %}</div>
-<div class="muted">{{m.created_at.strftime('%d/%m/%Y %H:%M')}}</div>
-{% if m.sender_id==current_user.id and not m.deleted_for_all %}
-<form method="post" action="{{url_for('delete_message',message_id=m.id)}}" style="margin-top:5px">
-<input type="hidden" name="_csrf" value="{{csrf_token()}}">
-<button class="msg-delete" type="submit" onclick="return confirm('¿Eliminar este mensaje para ambos?');">Eliminar mensaje</button>
-</form>
-{% endif %}
-</div>
-{% else %}<div id="empty-chat" class="muted">Aún no hay mensajes.</div>{% endfor %}
-</div>
-
-<form id="chat-form" method="post" style="margin-top:20px">
-<input type="hidden" id="csrf-token" name="_csrf" value="{{csrf_token()}}">
-<input id="message-input" name="body" maxlength="2000" placeholder="{% if matched_products %}Escribe sobre {{matched_products|join(', ')}}{% else %}Escribe un mensaje{% endif %}" autocomplete="off" required>
-<br><br><button id="send-button" class="btn primary">Enviar</button>
-</form>
-</div></div>
-
-<script>
-(()=>{
- const box=document.getElementById('messages'),
- form=document.getElementById('chat-form'),
- input=document.getElementById('message-input'),
- button=document.getElementById('send-button'),
- csrf=document.getElementById('csrf-token').value,
- url="{{url_for('chat_messages',user_id=other.id,a=context_a_id,b=context_b_id)}}",
- send="{{url_for('chat',user_id=other.id,a=context_a_id,b=context_b_id)}}";
- let last=0,polling=false;
-
- function scan(){document.querySelectorAll('[data-message-id]').forEach(e=>{last=Math.max(last,Number(e.dataset.messageId||0));});}
- function add(m){
-  if(document.querySelector(`[data-message-id="${m.id}"]`))return;
-  const emp=document.getElementById('empty-chat');if(emp)emp.remove();
-  const w=document.createElement('div');w.className='msg '+(m.mine?'mine':'theirs');w.dataset.messageId=m.id;
-  const b=document.createElement('div');b.className='message-body';b.textContent=m.body;
-  const t=document.createElement('div');t.className='muted';t.textContent=m.created_at;
-  w.append(b,t);box.appendChild(w);last=Math.max(last,Number(m.id));box.scrollTop=box.scrollHeight;
- }
- async function poll(){
-  if(polling||document.hidden)return;polling=true;
-  try{
-   const separator=url.includes('?')?'&':'?';
-   const r=await fetch(`${url}${separator}after=${last}`,{headers:{Accept:'application/json'},cache:'no-store'});
-   if(r.ok){const d=await r.json();(d.messages||[]).forEach(add);}
-  }finally{polling=false;}
- }
- form.addEventListener('submit',async e=>{
-  e.preventDefault();const body=input.value.trim();if(!body)return;button.disabled=true;
-  const fd=new FormData();fd.append('body',body);fd.append('_csrf',csrf);
-  try{
-   const r=await fetch(send,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json','X-CSRF-Token':csrf}});
-   if(!r.ok)throw new Error();
-   const d=await r.json();if(d.message)add(d.message);input.value='';input.focus();
-  }catch(e){alert('No se pudo enviar el mensaje.');}
-  finally{button.disabled=false;}
- });
- scan();box.scrollTop=box.scrollHeight;setInterval(poll,2000);
-})();
-</script>
 {% endblock %}

@@ -1,45 +1,36 @@
 {% extends 'base.html' %}
+{% block title %}Mercado BETO Plus — Tu bodega de barrio, más cerca de ti{% endblock %}
 {% block content %}
-<section class="hero">
-  <div class="container">
-    <h1>Mercado BETO Plus</h1>
-    <h2 style="margin: 0.35em 0 0.65em; font-size: clamp(1.3rem, 3vw, 2rem);">Tu bodega de barrio, más cerca de ti.</h2>
-    <p>Un espacio digital donde las bodegas pueden ofrecer sus productos, llegar a más clientes y crecer juntas.</p>
-    <p style="font-weight: 700; font-size: 1.1rem;">¡Tu bodega también puede ser parte de este proyecto!</p>
-    <p><small>Para participar: regístrate, verifica tu teléfono y espera la aprobación de tu cuenta.</small></p>
-  </div>
-</section>
-
+<section class="hero"><div class="container">
+  <h1>Mercado BETO Plus</h1>
+  <p><strong>Tu bodega de barrio, más cerca de ti.</strong></p>
+  <p>Un espacio digital donde las bodegas y vendedores independientes pueden ofrecer sus productos, llegar a más clientes y crecer juntos.</p>
+  <p>¡Tu bodega también puede ser parte de este proyecto!</p>
+</div></section>
 <div class="container">
   <div class="card">
-    <form class="filters">
-      <input name="q" value="{{ q }}" placeholder="Buscar producto" aria-label="Buscar producto">
-      <select name="kind" aria-label="Tipo de publicación">
-        <option value="">Oferta y demanda</option>
-        <option value="oferta" {% if request.args.get('kind') == 'oferta' %}selected{% endif %}>Ofertas</option>
-        <option value="demanda" {% if request.args.get('kind') == 'demanda' %}selected{% endif %}>Demandas</option>
-      </select>
-      <select name="municipality" aria-label="Municipio">
+    <form class="filters" method="get" action="{{ url_for('index') }}">
+      <input type="search" name="q" value="{{ q }}" placeholder="Buscar productos" aria-label="Buscar productos">
+      <select name="municipality" aria-label="Filtrar por municipio">
         <option value="">Todos los municipios</option>
-        {% for m in MUNICIPIOS %}
-        <option {% if request.args.get('municipality') == m %}selected{% endif %}>{{ m }}</option>
-        {% endfor %}
+        {% for m in MUNICIPIOS %}<option value="{{ m }}" {% if muni == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
       </select>
-      <button class="btn primary">Buscar</button>
+      <button class="btn primary" type="submit">Buscar</button>
     </form>
   </div>
+  <h2>Productos en venta</h2>
   <div class="list">
+    {% set ns = namespace(count=0) %}
     {% for x in listings %}
-    <a class="row" href="{{ url_for('detail', listing_id=x.id) }}">
-      <div>
-        <span class="pill {{ 'offer' if x.kind == 'oferta' else 'demand' }}">{{ x.kind|upper }}</span>
-        <b>{{ x.display_product }}</b>
-        <div class="muted">{{ x.quantity }} {{ x.unit }} · {{ '%.2f'|format(x.price) }} CUP · {{ x.municipality }}</div>
-      </div>
-    </a>
-    {% else %}
-    <div class="card">No hay publicaciones.</div>
+      {% if x.kind == 'oferta' %}
+        {% set ns.count = ns.count + 1 %}
+        <a class="row" href="{{ url_for('detail', listing_id=x.id) }}">
+          <div><span class="pill offer">VENTA</span> <b>{{ x.display_product }}</b>
+          <div class="muted">{{ x.quantity }} {{ x.unit }} · {{ '%.2f'|format(x.price) }} CUP · {{ x.municipality }}</div></div>
+        </a>
+      {% endif %}
     {% endfor %}
+    {% if ns.count == 0 %}<div class="card">Todavía no hay productos publicados. ¡Vuelve pronto!</div>{% endif %}
   </div>
 </div>
 {% endblock %}

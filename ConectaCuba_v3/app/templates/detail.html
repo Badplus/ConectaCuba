@@ -1,26 +1,33 @@
-{% extends 'base.html' %}{% block content %}
-<div class="container"><div class="card">
-<span class="pill {{'offer' if listing.kind=='oferta' else 'demand'}}">{{listing.display_kind|upper}}</span>
-<h1>{{listing.active_items|length}} producto{% if listing.active_items|length != 1 %}s{% endif %}</h1>
-<p>{{listing.municipality}}, {{listing.province}}</p>
-
-<div class="product-detail-list">
-{% for item in listing.active_items %}
-<div class="product-detail-row">
-<b>{{item.display_product}}</b>
-<span>{{item.quantity}} {{item.unit}}</span>
-<span>{{'%.2f'|format(item.price)}} CUP/{{item.unit}}</span>
+{% extends 'base.html' %}
+{% block content %}
+<div class="container">
+  <div class="card">
+    <p class="muted">Mercado BETO Plus · Detalle del producto</p>
+    <span class="pill {{ 'offer' if listing.kind == 'oferta' else 'demand' }}">{{ 'EN VENTA' if listing.kind == 'oferta' else 'DEMANDA ANTIGUA' }}</span>
+    <h1>{{ listing.display_product }}</h1>
+    <p><strong>Precio:</strong> {{ '%.2f'|format(listing.price) }} CUP/{{ listing.unit }}</p>
+    <p><strong>Cantidad:</strong> {{ listing.quantity }} {{ listing.unit }}</p>
+    <p><strong>Municipio:</strong> {{ listing.municipality }}</p>
+    {% if listing.description %}
+      <h3>Descripción</h3>
+      <p>{{ listing.description }}</p>
+    {% endif %}
+    {% if listing.kind == 'oferta' %}
+      <p><strong>Vende:</strong> {{ listing.owner.full_name }}</p>
+      {% if current_user.is_authenticated %}
+        {% if current_user.approved and current_user.id != listing.owner_id %}
+          <a class="btn primary" href="{{ url_for('chat', user_id=listing.owner_id) }}">Escribir al vendedor</a>
+        {% elif current_user.id == listing.owner_id %}
+          <p class="muted">Esta publicación es tuya.</p>
+        {% else %}
+          <p class="muted">Podrás contactar al vendedor cuando tu cuenta esté activa.</p>
+        {% endif %}
+      {% else %}
+        <p>Inicia sesión o regístrate gratis para contactar al vendedor.</p>
+        <a class="btn primary" href="{{ url_for('login') }}">Entrar</a>
+        <a class="btn secondary" href="{{ url_for('register') }}">Crear cuenta</a>
+      {% endif %}
+    {% endif %}
+  </div>
 </div>
-{% else %}
-<div class="muted">Esta publicación ya no tiene productos disponibles.</div>
-{% endfor %}
-</div>
-
-{% if listing.description %}<p>{{listing.description}}</p>{% endif %}
-<p class="muted">La dirección exacta del usuario no se muestra públicamente.</p>
-
-{% if current_user.is_authenticated and current_user.approved and current_user.id!=listing.owner_id %}
-<a class="btn primary" href="{{url_for('chat',user_id=listing.owner_id)}}">Abrir conversación general</a>
-{% endif %}
-</div></div>
 {% endblock %}

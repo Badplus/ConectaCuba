@@ -1,1 +1,49 @@
-{% extends 'base.html' %}{% block content %}<div class="container"><div class="form"><h2>Crear cuenta</h2><p class="muted">Los compradores acceden inmediatamente. Los vendedores y administradores de bodegas necesitan aprobación manual para comenzar a vender.</p><form method="post" class="grid"><div><label>Nombre</label><input name="full_name" required></div><div><label>Teléfono</label><input name="phone" required></div><div><label>Contraseña</label><input type="password" name="password" required></div><div><label>Rol</label><select name="role"><option value="comprador">Comprador</option><option value="vendedor">Vendedor independiente</option><option value="admin_bodega">Administrador de bodega</option></select></div><div><label>Municipio</label><select name="municipality">{% for m in MUNICIPIOS %}<option>{{m}}</option>{% endfor %}</select></div><div><label>Dirección privada</label><input name="address" required></div><div class="full"><button class="btn primary">Registrarme</button></div></form></div></div>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+<div class="container">
+  <div class="form">
+    <h2>Crear cuenta en Mercado BETO Plus</h2>
+    <p class="muted">Tu bodega de barrio, más cerca de ti.</p>
+    <p class="muted">Los compradores pueden entrar inmediatamente después de registrarse. Los vendedores independientes y administradores de bodegas necesitan aprobación del administrador de la plataforma antes de publicar.</p>
+
+    <form method="post" action="{{ url_for('register') }}" class="grid">
+      <div>
+        <label for="full_name">Nombre completo</label>
+        <input id="full_name" name="full_name" autocomplete="name" maxlength="120" required>
+      </div>
+      <div>
+        <label for="phone">Teléfono</label>
+        <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="30" required>
+      </div>
+      <div>
+        <label for="password">Contraseña</label>
+        <input id="password" name="password" type="password" autocomplete="new-password" required>
+      </div>
+      <div>
+        <label for="role">Tipo de cuenta</label>
+        <select id="role" name="role" required>
+          <option value="comprador">Comprador — acceso inmediato</option>
+          <option value="vendedor">Vendedor independiente — requiere aprobación</option>
+          <option value="admin_bodega">Administrador de bodega — requiere aprobación</option>
+        </select>
+      </div>
+      <div>
+        <label for="municipality">Municipio</label>
+        <select id="municipality" name="municipality" required>
+          {% for m in MUNICIPIOS %}
+          <option value="{{ m }}">{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="address">Dirección (dato privado de la cuenta)</label>
+        <input id="address" name="address" autocomplete="street-address" maxlength="255" required>
+      </div>
+      <div class="full">
+        <button type="submit" class="btn primary">Crear mi cuenta</button>
+      </div>
+    </form>
+    <p class="muted">No se realiza verificación por SMS en esta etapa.</p>
+  </div>
+</div>
+{% endblock %}

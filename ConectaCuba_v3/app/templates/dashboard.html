@@ -1,60 +1,54 @@
-{% extends 'base.html' %}{% block content %}
+{% extends 'base.html' %}
+{% block title %}Mi panel — Mercado BETO Plus{% endblock %}
+{% block content %}
 <div class="container">
-<div class="card">
-<h2>Hola, {{current_user.full_name}}</h2>
-<p>Cuenta activa · {{current_user.role}} · {{current_user.municipality}}, {{current_user.province}}
-{% if current_user.is_admin %} · <span class="pill">ADMINISTRADOR</span>{% endif %}</p>
-<a class="btn primary" href="{{url_for('publish')}}">+ Nueva publicación</a>
-{% if current_user.is_admin %}<a class="btn secondary" href="{{url_for('admin')}}">Administración</a>{% endif %}
-</div>
+  <div class="card">
+    <h2>Mi panel</h2>
+    <p>Hola, {{ current_user.full_name }}.</p>
+    <p class="muted">
+      {% if current_user.role == 'admin_bodega' %}Administrador de bodega
+      {% elif current_user.role == 'vendedor' %}Vendedor independiente
+      {% else %}Cuenta de usuario{% endif %}
+      · {{ current_user.municipality }}
+      · {{ 'Cuenta activa' if current_user.approved else 'Pendiente de aprobación' }}
+    </p>
+    {% if current_user.can_publish %}
+      <a class="btn primary" href="{{ url_for('publish') }}">+ Publicar producto en venta</a>
+    {% endif %}
+    <a class="btn secondary" href="{{ url_for('notifications') }}">Mis notificaciones</a>
+    <a class="btn secondary" href="{{ url_for('index') }}">Ver mercado</a>
+  </div>
 
-<h2>Mis publicaciones activas</h2>
-<div class="list">
-{% for x in listings %}
-<div class="row">
-<div style="flex:1">
-<span class="pill {{'offer' if x.kind=='oferta' else 'demand'}}">{{x.display_kind|upper}}</span>
-<b>{{x.active_items|length}} producto{% if x.active_items|length != 1 %}s{% endif %}</b>
-<div class="product-summary">
-{% for item in x.active_items %}
-<span>{{item.display_product}} · {{item.quantity}} {{item.unit}} · {{'%.2f'|format(item.price)}} CUP</span>
-{% endfor %}
-</div>
-<div class="muted">{{x.municipality}}, {{x.province}}</div>
-</div>
-<div style="display:flex;gap:8px;flex-wrap:wrap">
-<a class="btn secondary" href="{{url_for('matches',listing_id=x.id)}}">Coincidencias</a>
-<a class="btn secondary" href="{{url_for('edit_listing',listing_id=x.id)}}">Actualizar</a>
-<form method="post" action="{{url_for('mark_listing_sold',listing_id=x.id)}}" onsubmit="return confirm('¿Marcar todos los productos como vendidos/finalizados?');">
-<input type="hidden" name="_csrf" value="{{csrf_token()}}">
-<button class="btn">Todo vendido</button>
-</form>
-<form method="post" action="{{url_for('delete_listing',listing_id=x.id)}}" onsubmit="return confirm('¿Eliminar toda esta publicación del mercado?');">
-<input type="hidden" name="_csrf" value="{{csrf_token()}}">
-<button class="btn danger">Eliminar</button>
-</form>
-</div>
-</div>
-{% else %}<div class="card">Sin publicaciones activas.</div>{% endfor %}
-</div>
+  {% if current_user.can_publish %}
+    <h2>Mis publicaciones</h2>
+    <div class="list">
+      {% for x in listings %}
+        <div class="row">
+          <div>
+            <b>{{ x.display_product }}</b>
+            <div class="muted">
+              Venta · {{ x.quantity }} {{ x.unit }} · {{ '%.2f'|format(x.price) }} CUP
+              · {{ x.municipality }} · {{ 'Activa' if x.active else 'Inactiva' }}
+            </div>
+          </div>
+          <a class="btn secondary" href="{{ url_for('detail', listing_id=x.id) }}">Ver publicación</a>
+        </div>
+      {% else %}
+        <div class="card">Todavía no has publicado productos. Puedes comenzar con el botón «Publicar producto en venta».</div>
+      {% endfor %}
+    </div>
 
-{% if archived_listings %}
-<h2 style="margin-top:28px">Publicaciones cerradas</h2>
-<div class="list">
-{% for x in archived_listings %}
-<div class="row">
-<div>
-<b>{{x.display_kind}} · Publicación cerrada</b>
-<div class="product-summary">
-{% for item in x.items %}
-<span>{{item.display_product}}{% if item.quantity > 0 %} · {{item.quantity}} {{item.unit}}{% endif %}</span>
-{% endfor %}
-</div>
-</div>
-<a class="btn secondary" href="{{url_for('edit_listing',listing_id=x.id)}}">Revisar / reactivar</a>
-</div>
-{% endfor %}
-</div>
-{% endif %}
+    {% if notes %}
+      <h2>Notificaciones recientes</h2>
+      <div class="list">
+        {% for n in notes %}
+          <div class="card">
+            <p>{{ n.message }}</p>
+            <p class="muted">{{ n.created_at.strftime('%d/%m/%Y %H:%M') if n.created_at else '' }}</p>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endif %}
 </div>
 {% endblock %}

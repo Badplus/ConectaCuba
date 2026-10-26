@@ -32,7 +32,7 @@ def create_app():
 
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["ADMIN_PASSWORD"] = os.getenv("ADMIN_PASSWORD", "CAMBIAR123")
+    app.config["ADMIN_PASSWORD"] = os.getenv("ADMIN_PASSWORD", "")
     app.config["OWNER_WHATSAPP"] = OWNER_WHATSAPP
     app.config["TURNSTILE_SITE_KEY"] = os.getenv("TURNSTILE_SITE_KEY", "")
     app.config["TURNSTILE_SECRET_KEY"] = os.getenv("TURNSTILE_SECRET_KEY", "")

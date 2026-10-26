@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from app import create_app, db
 from app.models import User, PasswordResetRequest
@@ -13,12 +14,15 @@ class RecoveryTests(unittest.TestCase):
   os.environ['ADMIN_PASSWORD']='recovery-admin-tests-only'
   self.app=create_app()
   self.app.config['TESTING']=True
+  self.turnstile_patch=patch('app.routes.turnstile_valid',return_value=True)
+  self.turnstile_patch.start()
   self.client=self.app.test_client()
   with self.app.app_context():
    u=User(full_name='Test',phone='12345678',role='comprador',municipality='Santiago de Cuba',address='test',approved=True)
    u.set_password('old-password-1234')
    db.session.add(u);db.session.commit()
  def tearDown(self):
+  self.turnstile_patch.stop()
   with self.app.app_context():
    db.session.remove();db.engine.dispose()
   self.tmp.cleanup()

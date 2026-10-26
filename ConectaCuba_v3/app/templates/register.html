@@ -41,10 +41,18 @@
         <input id="address" name="address" autocomplete="street-address" maxlength="255" required>
       </div>
       <div class="full">
-        <button type="submit" class="btn primary">Crear mi cuenta</button>
+        {% if turnstile_site_key %}
+<div style="margin-top:16px">
+ <label>Verificación de seguridad</label>
+ <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-language="es"></div>
+</div>
+{% endif %}
+<button type="submit" class="btn primary">Crear mi cuenta</button>
       </div>
     </form>
     <p class="muted">No se realiza verificación por SMS en esta etapa.</p>
   </div>
 </div>
 {% endblock %}
+
+{% if turnstile_site_key %}<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>{% endif %}

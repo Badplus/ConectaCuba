@@ -114,3 +114,15 @@ class Setting(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     commission = db.Column(db.Float, default=5.0)
+
+
+class PasswordResetRequest(db.Model):
+    __tablename__ = "password_reset_request"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    requested_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    approved_at = db.Column(db.DateTime)
+    expires_at = db.Column(db.DateTime)
+    token_hash = db.Column(db.String(64))
+    used_at = db.Column(db.DateTime)
+    user = db.relationship("User")

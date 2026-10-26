@@ -1,10 +1,18 @@
+import hmac
+import json
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+import secrets
+import hashlib
+from datetime import timedelta
+from urllib.parse import quote
 from functools import wraps
 from datetime import datetime
 from flask import render_template,request,redirect,url_for,flash,session,current_app,abort
 from flask_login import login_user,logout_user,login_required,current_user
 from sqlalchemy import or_,and_
 from . import db,MUNICIPIOS,PRODUCTOS
-from .models import User,Listing,Notification,Message,Setting
+from .models import User,Listing,Notification,Message,Setting,PasswordResetRequest
 
 def approved_required(fn):
  @wraps(fn)
@@ -28,7 +36,7 @@ def seller_required(fn):
 def admin_required(fn):
  @wraps(fn)
  def w(*a,**k):
-  if not session.get('admin_ok'): return redirect(url_for('admin_login'))
+  if not session.get('admin_ok') and not (current_user.is_authenticated and current_user.is_admin): return redirect(url_for('login'))
   return fn(*a,**k)
  return w
 
@@ -46,6 +54,24 @@ def matches_for(item):
   score=geo+qty+price
   out.append((o,score,'Coincidencia excelente' if score>=7 else 'Buena coincidencia' if score>=5 else 'Coincidencia posible'))
  return sorted(out,key=lambda x:x[1],reverse=True)
+
+def turnstile_valid():
+ secret=current_app.config.get('TURNSTILE_SECRET_KEY')
+ site_key=current_app.config.get('TURNSTILE_SITE_KEY')
+ if not secret or not site_key:
+  current_app.logger.error('Turnstile no configurado completamente.')
+  return False
+ token=request.form.get('cf-turnstile-response','')
+ if not token:
+  return False
+ try:
+  payload=urlencode({'secret':secret,'response':token,'remoteip':request.remote_addr or ''}).encode()
+  req=Request('https://challenges.cloudflare.com/turnstile/v0/siteverify',data=payload,method='POST')
+  with urlopen(req,timeout=5) as response:
+   return json.load(response).get('success') is True
+ except Exception:
+  current_app.logger.exception('Error al verificar Turnstile')
+  return False
 
 def register_routes(app):
  @app.context_processor
@@ -66,6 +92,7 @@ def register_routes(app):
  @app.route('/register',methods=['GET','POST'])
  def register():
   if request.method=='POST':
+   if not turnstile_valid(): abort(400, description='Verificación de seguridad fallida.')
    d=request.form
    phone=d.get('phone','').strip()
    role=d.get('role','').strip()
@@ -96,6 +123,83 @@ def register_routes(app):
    return redirect(url_for('pending'))
   return render_template('register.html')
 
+ @app.route('/account/password', methods=['GET','POST'])
+ @login_required
+ def change_password():
+  if request.method=='POST':
+   old=request.form.get('current_password','')
+   new=request.form.get('new_password','')
+   if not current_user.check_password(old):
+    flash('Contraseña actual incorrecta.','danger')
+   elif len(new)<12 or len(new)>128:
+    flash('La contraseña nueva debe tener entre 12 y 128 caracteres.','danger')
+   else:
+    current_user.set_password(new)
+    db.session.commit()
+    flash('Contraseña actualizada.','success')
+    return redirect(url_for('index'))
+  return render_template('change_password.html')
+
+ @app.route('/forgot-password',methods=['GET','POST'])
+ def forgot_password():
+  if request.method=='POST':
+   phone=request.form.get('phone','').strip()
+   user=User.query.filter_by(phone=phone).first()
+   if user:
+    now=datetime.utcnow()
+    recent=PasswordResetRequest.query.filter_by(user_id=user.id).filter(
+     PasswordResetRequest.requested_at>now-timedelta(minutes=15)).first()
+    if not recent:
+     db.session.add(PasswordResetRequest(user_id=user.id))
+     db.session.commit()
+   flash('Si el teléfono está registrado, la solicitud estará disponible para el administrador. Contacta con él por WhatsApp para verificar tu identidad.','success')
+   return redirect(url_for('forgot_password'))
+  return render_template('forgot_password.html')
+
+ @app.route('/admin/password-resets')
+ @admin_required
+ def admin_password_resets():
+  requests=PasswordResetRequest.query.filter_by(approved_at=None,used_at=None).order_by(
+   PasswordResetRequest.requested_at.desc()).limit(100).all()
+  return render_template('admin_password_resets.html',requests=requests)
+
+ @app.route('/admin/password-resets/<int:reset_id>/approve',methods=['POST'])
+ @admin_required
+ def approve_password_reset(reset_id):
+  record=db.session.get(PasswordResetRequest,reset_id)
+  if not record or record.approved_at or record.used_at:
+   abort(404)
+  if record.requested_at<datetime.utcnow()-timedelta(days=1):
+   abort(400,description='La solicitud ha caducado.')
+  token=secrets.token_urlsafe(32)
+  record.token_hash=hashlib.sha256(token.encode()).hexdigest()
+  record.approved_at=datetime.utcnow()
+  record.expires_at=datetime.utcnow()+timedelta(minutes=15)
+  db.session.commit()
+  link=url_for('reset_password',reset_id=record.id,token=token,_external=True)
+  return render_template('admin_reset_link.html',link=link)
+
+ @app.route('/reset-password/<int:reset_id>/<token>',methods=['GET','POST'])
+ def reset_password(reset_id,token):
+  record=db.session.get(PasswordResetRequest,reset_id)
+  digest=hashlib.sha256(token.encode()).hexdigest()
+  if (not record or not record.token_hash or not secrets.compare_digest(record.token_hash,digest)
+      or record.used_at or not record.expires_at or record.expires_at<datetime.utcnow()):
+   abort(404,description='Enlace inválido o caducado.')
+  if request.method=='POST':
+   password=request.form.get('new_password','')
+   if len(password)<12 or len(password)>128:
+    flash('La contraseña debe tener entre 12 y 128 caracteres.','danger')
+   else:
+    record.user.set_password(password)
+    record.used_at=datetime.utcnow()
+    record.token_hash=None
+    db.session.commit()
+    session.clear()
+    flash('Contraseña actualizada. Ya puedes entrar.','success')
+    return redirect(url_for('login'))
+  return render_template('reset_password.html')
+
  @app.route('/pending')
  @login_required
  def pending():
@@ -106,16 +210,23 @@ def register_routes(app):
  @app.route('/login',methods=['GET','POST'])
  def login():
   if request.method=='POST':
+   if not turnstile_valid(): abort(400, description='Verificación de seguridad fallida.')
    u=User.query.filter_by(phone=request.form['phone'].strip()).first()
    if not u or not u.check_password(request.form['password']): flash('Credenciales incorrectas.','danger'); return redirect(url_for('login'))
    login_user(u)
+   if u.is_admin:
+    session['admin_ok']=True
+    return redirect(url_for('admin'))
    if not u.approved: return redirect(url_for('pending'))
    return redirect(url_for('index' if u.role=='comprador' else 'dashboard'))
   return render_template('login.html')
 
  @app.route('/logout')
  @login_required
- def logout(): logout_user(); return redirect(url_for('index'))
+ def logout():
+  session.pop('admin_ok',None)
+  logout_user()
+  return redirect(url_for('index'))
 
  @app.route('/dashboard')
  @login_required
@@ -184,7 +295,13 @@ def register_routes(app):
 
  @app.route('/admin/login',methods=['GET','POST'])
  def admin_login():
-  if request.method=='POST' and request.form.get('password')==current_app.config['ADMIN_PASSWORD']: session['admin_ok']=True; return redirect(url_for('admin'))
+  if request.method=='POST':
+   if not turnstile_valid(): abort(400, description='Verificación de seguridad fallida.')
+   configured=current_app.config.get('ADMIN_PASSWORD','')
+   if configured and hmac.compare_digest(request.form.get('password',''),configured):
+    session['admin_ok']=True
+    return redirect(url_for('admin'))
+   flash('Credenciales incorrectas.','danger')
   return render_template('admin_login.html')
 
  @app.route('/admin')

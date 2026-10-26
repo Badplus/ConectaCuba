@@ -321,6 +321,14 @@ def register_routes(app):
   if not item or not item.active or not item.owner.approved: abort(404)
   return render_template('detail.html',listing=item)
 
+ @app.route('/api/notifications/status')
+ @login_required
+ def notifications_status():
+  unread=Notification.query.filter_by(user_id=current_user.id,read=False).count()
+  response=current_app.response_class(response=json.dumps({'unread':unread}),mimetype='application/json')
+  response.headers['Cache-Control']='no-store'
+  return response
+
  @app.route('/notifications')
  @login_required
  def notifications():

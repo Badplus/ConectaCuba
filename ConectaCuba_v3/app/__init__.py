@@ -1,5 +1,7 @@
 import os
-from flask import Flask
+import secrets
+import hmac
+from flask import Flask, request, session, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 
@@ -18,6 +20,22 @@ def create_app():
  app.config['SQLALCHEMY_TRACK_MODIFICATIONS']=False
  app.config['ADMIN_PASSWORD']=os.getenv('ADMIN_PASSWORD','CAMBIAR123')
  app.config['OWNER_WHATSAPP']=OWNER_WHATSAPP
+ @app.context_processor
+ def security_form_context():
+  def csrf_token():
+   if '_csrf_token' not in session:
+    session['_csrf_token'] = secrets.token_urlsafe(32)
+   return session['_csrf_token']
+  return {'csrf_token': csrf_token, 'turnstile_site_key': app.config.get('TURNSTILE_SITE_KEY', '')}
+
+ @app.before_request
+ def check_form_csrf():
+  if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+   expected=session.get('_csrf_token','')
+   received=request.form.get('_csrf','')
+   if not expected or not hmac.compare_digest(expected, received):
+    abort(400, description='Token de seguridad inválido. Recarga la página.')
+
  db.init_app(app); login_manager.init_app(app)
  from .models import User,Setting
  @login_manager.user_loader

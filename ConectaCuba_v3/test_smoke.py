@@ -136,6 +136,31 @@ class MarketplaceSmokeTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 400)
 
+    def test_admin_cannot_toggle_protected_admin(self):
+        self.register("55500010", "comprador")
+        self.client.post("/logout", data={"_csrf": self.csrf()})
+        with self.app.app_context():
+            user = User.query.filter_by(phone="55500010").one()
+            user.is_admin = True
+            user_id = user.id
+            db.session.commit()
+        self.client.post("/admin/login", data={
+            "_csrf": self.csrf(), "password": "testing-only-admin-password"
+        })
+        response = self.client.post(f"/admin/user/{user_id}/toggle", data={
+            "_csrf": self.csrf()
+        })
+        self.assertEqual(response.status_code, 403)
+
+    def test_commission_rejects_nan(self):
+        self.client.post("/admin/login", data={
+            "_csrf": self.csrf(), "password": "testing-only-admin-password"
+        })
+        response = self.client.post("/admin/commission", data={
+            "_csrf": self.csrf(), "commission": "nan"
+        })
+        self.assertEqual(response.status_code, 400)
+
     def test_chat_requires_authentication(self):
         self.assertEqual(self.client.get("/chat/123").status_code, 302)
 

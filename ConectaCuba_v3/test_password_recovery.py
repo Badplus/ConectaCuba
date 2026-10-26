@@ -30,6 +30,7 @@ class RecoveryTests(unittest.TestCase):
   self.client.get('/forgot-password')
   with self.client.session_transaction() as s: return s['_csrf_token']
  def test_request_and_single_use(self):
+  import re
   token=self.csrf()
   self.assertEqual(self.client.post('/forgot-password',data={'_csrf':token,'phone':'12345678'}).status_code,302)
   with self.app.app_context():
@@ -40,15 +41,33 @@ class RecoveryTests(unittest.TestCase):
   self.client.post('/admin/login',data={'_csrf':token,'password':'recovery-admin-tests-only'})
   response=self.client.post('/admin/password-resets/'+str(reset_id)+'/approve',data={'_csrf':token})
   self.assertEqual(response.status_code,200)
-  import re,html
-  link=html.unescape(re.search(r'https?://[^<\s]+',response.get_data(as_text=True)).group(0))
-  from urllib.parse import urlparse
-  path=urlparse(link).path
-  self.assertEqual(self.client.get(path).status_code,200)
-  self.assertEqual(self.client.post(path,data={'_csrf':token,'new_password':'new-password-1234'}).status_code,302)
-  self.assertEqual(self.client.get(path).status_code,404)
+  pin=re.search(r'letter-spacing:.3em">(\\d{5})</p>',response.get_data(as_text=True)).group(1)
+  self.assertEqual(self.client.post('/verify-recovery-pin',data={'_csrf':token,'phone':'12345678','pin':pin}).status_code,302)
+  self.assertEqual(self.client.get('/new-password').status_code,200)
+  self.assertEqual(self.client.post('/new-password',data={'_csrf':token,'new_password':'new-password-1234','confirm_password':'different-password'}).status_code,200)
+  self.assertEqual(self.client.post('/new-password',data={'_csrf':token,'new_password':'new-password-1234','confirm_password':'new-password-1234'}).status_code,302)
+  self.assertNotEqual(self.client.get('/new-password').status_code,200)
   with self.app.app_context():
    self.assertTrue(User.query.filter_by(phone='12345678').first().check_password('new-password-1234'))
+
+ def test_five_wrong_attempts_lock_pin(self):
+  import re
+  token=self.csrf()
+  self.client.post('/forgot-password',data={'_csrf':token,'phone':'12345678'})
+  with self.app.app_context(): reset_id=PasswordResetRequest.query.first().id
+  self.client.post('/admin/login',data={'_csrf':token,'password':'recovery-admin-tests-only'})
+  response=self.client.post('/admin/password-resets/'+str(reset_id)+'/approve',data={'_csrf':token})
+  pin=re.search(r'letter-spacing:.3em">(\\d{5})</p>',response.get_data(as_text=True)).group(1)
+  wrong='00000' if pin!='00000' else '99999'
+  for _ in range(5):
+   self.client.post('/verify-recovery-pin',data={'_csrf':token,'phone':'12345678','pin':wrong})
+  self.client.post('/verify-recovery-pin',data={'_csrf':token,'phone':'12345678','pin':pin})
+  self.assertNotEqual(self.client.get('/new-password').status_code,200)
+  with self.app.app_context():
+   record=PasswordResetRequest.query.first()
+   self.assertEqual(record.pin_attempts,5)
+   self.assertIsNotNone(record.used_at)
+
  def test_unauthorized_admin_action(self):
   self.assertIn(self.client.post('/admin/password-resets/1/approve',data={'_csrf':self.csrf()}).status_code,(302,403))
 if __name__=='__main__':unittest.main()

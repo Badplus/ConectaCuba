@@ -1,3 +1,7 @@
+import hmac
+import json
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 import secrets
 import hashlib
 from datetime import timedelta
@@ -32,7 +36,7 @@ def seller_required(fn):
 def admin_required(fn):
  @wraps(fn)
  def w(*a,**k):
-  if not session.get('admin_ok'): return redirect(url_for('admin_login'))
+  if not session.get('admin_ok') and not (current_user.is_authenticated and current_user.is_admin): return redirect(url_for('login'))
   return fn(*a,**k)
  return w
 
@@ -50,6 +54,24 @@ def matches_for(item):
   score=geo+qty+price
   out.append((o,score,'Coincidencia excelente' if score>=7 else 'Buena coincidencia' if score>=5 else 'Coincidencia posible'))
  return sorted(out,key=lambda x:x[1],reverse=True)
+
+def turnstile_valid():
+ secret=current_app.config.get('TURNSTILE_SECRET_KEY')
+ site_key=current_app.config.get('TURNSTILE_SITE_KEY')
+ if not secret or not site_key:
+  current_app.logger.error('Turnstile no configurado completamente.')
+  return False
+ token=request.form.get('cf-turnstile-response','')
+ if not token:
+  return False
+ try:
+  payload=urlencode({'secret':secret,'response':token,'remoteip':request.remote_addr or ''}).encode()
+  req=Request('https://challenges.cloudflare.com/turnstile/v0/siteverify',data=payload,method='POST')
+  with urlopen(req,timeout=5) as response:
+   return json.load(response).get('success') is True
+ except Exception:
+  current_app.logger.exception('Error al verificar Turnstile')
+  return False
 
 def register_routes(app):
  @app.context_processor
@@ -70,6 +92,7 @@ def register_routes(app):
  @app.route('/register',methods=['GET','POST'])
  def register():
   if request.method=='POST':
+   if not turnstile_valid(): abort(400, description='Verificación de seguridad fallida.')
    d=request.form
    phone=d.get('phone','').strip()
    role=d.get('role','').strip()
@@ -187,16 +210,23 @@ def register_routes(app):
  @app.route('/login',methods=['GET','POST'])
  def login():
   if request.method=='POST':
+   if not turnstile_valid(): abort(400, description='Verificación de seguridad fallida.')
    u=User.query.filter_by(phone=request.form['phone'].strip()).first()
    if not u or not u.check_password(request.form['password']): flash('Credenciales incorrectas.','danger'); return redirect(url_for('login'))
    login_user(u)
+   if u.is_admin:
+    session['admin_ok']=True
+    return redirect(url_for('admin'))
    if not u.approved: return redirect(url_for('pending'))
    return redirect(url_for('index' if u.role=='comprador' else 'dashboard'))
   return render_template('login.html')
 
  @app.route('/logout')
  @login_required
- def logout(): logout_user(); return redirect(url_for('index'))
+ def logout():
+  session.pop('admin_ok',None)
+  logout_user()
+  return redirect(url_for('index'))
 
  @app.route('/dashboard')
  @login_required
@@ -265,7 +295,13 @@ def register_routes(app):
 
  @app.route('/admin/login',methods=['GET','POST'])
  def admin_login():
-  if request.method=='POST' and request.form.get('password')==current_app.config['ADMIN_PASSWORD']: session['admin_ok']=True; return redirect(url_for('admin'))
+  if request.method=='POST':
+   if not turnstile_valid(): abort(400, description='Verificación de seguridad fallida.')
+   configured=current_app.config.get('ADMIN_PASSWORD','')
+   if configured and hmac.compare_digest(request.form.get('password',''),configured):
+    session['admin_ok']=True
+    return redirect(url_for('admin'))
+   flash('Credenciales incorrectas.','danger')
   return render_template('admin_login.html')
 
  @app.route('/admin')

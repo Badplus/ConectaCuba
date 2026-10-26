@@ -23,7 +23,7 @@
             <a href="{{ url_for('publish') }}">Publicar</a>
           {% endif %}
           {% if current_user.approved %}
-            <a href="{{ url_for('notifications') }}">Notificaciones{% if unread %} ({{ unread }}){% endif %}</a>
+            <a href="{{ url_for('notifications') }}">Notificaciones<span id="unread-count">{% if unread %} ({{ unread }}){% endif %}</span></a>
           {% else %}
             <a href="{{ url_for('pending') }}">Activación pendiente</a>
           {% endif %}
@@ -47,5 +47,33 @@
     Mercado BETO Plus — Tu bodega de barrio, más cerca de ti.
     Comisión actual de la plataforma: {{ commission }}%
   </footer>
+  {% if current_user.is_authenticated %}
+  <div id="notification-live-alert" role="status" aria-live="polite" style="display:none;position:fixed;bottom:18px;right:18px;z-index:1000;background:#163b30;color:white;padding:14px 18px;border-radius:10px;box-shadow:0 4px 18px #0003;max-width:310px">
+    Tienes nuevas notificaciones. <a href="{{ url_for('notifications') }}" style="color:white;text-decoration:underline">Verlas</a>
+  </div>
+  <script>
+  (() => {
+    const badge = document.getElementById('unread-count');
+    const alertBox = document.getElementById('notification-live-alert');
+    let previous = {{ unread|int }};
+    async function checkNotifications() {
+      if (document.hidden) return;
+      try {
+        const response = await fetch("{{ url_for('notifications_status') }}", {credentials:'same-origin',cache:'no-store'});
+        if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return;
+        const data = await response.json();
+        const count = Number(data.unread);
+        if (!Number.isSafeInteger(count) || count < 0) return;
+        if (badge) badge.textContent = count ? ' (' + count + ')' : '';
+        if (count > previous && alertBox) alertBox.style.display = 'block';
+        if (count === 0 && alertBox) alertBox.style.display = 'none';
+        previous = count;
+      } catch (_) { /* Offline: retry next interval */ }
+    }
+    setInterval(checkNotifications, 5000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) checkNotifications(); });
+  })();
+  </script>
+  {% endif %}
 </body>
 </html>

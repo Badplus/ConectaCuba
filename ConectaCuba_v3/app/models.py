@@ -124,5 +124,6 @@ class PasswordResetRequest(db.Model):
     approved_at = db.Column(db.DateTime)
     expires_at = db.Column(db.DateTime)
     token_hash = db.Column(db.String(64))
+    pin_attempts = db.Column(db.Integer, nullable=False, default=0, server_default='0')
     used_at = db.Column(db.DateTime)
     user = db.relationship("User")

@@ -1,3 +1,4 @@
+import math
 import json
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -6,7 +7,7 @@ from datetime import datetime
 from flask import render_template,request,redirect,url_for,flash,session,current_app,abort
 from flask_login import login_user,logout_user,login_required,current_user
 from sqlalchemy import or_,and_
-from . import db,MUNICIPIOS,PRODUCTOS
+from . import db,MUNICIPIOS,PRODUCTOS,PROVINCIAS
 from .models import User,Listing,Notification,Message,Setting
 
 def approved_required(fn):
@@ -34,6 +35,12 @@ def admin_required(fn):
   if not session.get('admin_ok'): return redirect(url_for('admin_login'))
   return fn(*a,**k)
  return w
+
+def province_for(municipality):
+ for province, municipalities in PROVINCIAS.items():
+  if municipality in municipalities:
+   return province
+ abort(400, description='Municipio no válido.')
 
 def product_name(x):
  return x.custom_product if x.product == 'Otro' and x.custom_product else x.product
@@ -95,7 +102,7 @@ def register_routes(app):
     flash('Ese teléfono ya está registrado.','danger')
     return redirect(url_for('register'))
    auto_approved = role == 'comprador'
-   u=User(full_name=full_name,phone=phone,role=role,municipality=municipality,
+   u=User(full_name=full_name,phone=phone,role=role,municipality=municipality,province=province_for(municipality),
           address=address,approved=auto_approved,
           approved_at=datetime.utcnow() if auto_approved else None)
    u.set_password(password)
@@ -127,7 +134,7 @@ def register_routes(app):
    return redirect(url_for('index' if u.role=='comprador' else 'dashboard'))
   return render_template('login.html')
 
- @app.route('/logout')
+ @app.route('/logout',methods=['POST'])
  @login_required
  def logout(): logout_user(); return redirect(url_for('index'))
 
@@ -157,9 +164,9 @@ def register_routes(app):
     price=float(d.get('price',''))
    except (ValueError, TypeError):
     abort(400, description='Cantidad o precio no válido.')
-   if not (0 < quantity < 1e12 and 0 <= price < 1e12):
+   if not (math.isfinite(quantity) and math.isfinite(price) and 0 < quantity < 1e12 and 0 <= price < 1e12):
     abort(400, description='Cantidad o precio fuera de rango.')
-   item=Listing(kind='oferta',product=d['product'],custom_product=d.get('custom_product') or None,quantity=quantity,unit=d['unit'],price=price,municipality=d['municipality'],coverage=d['coverage'],description=d.get('description',''),owner_id=current_user.id); db.session.add(item); db.session.commit()
+   item=Listing(kind='oferta',product=d['product'],custom_product=d.get('custom_product') or None,quantity=quantity,unit=d['unit'],price=price,municipality=d['municipality'],province=province_for(d['municipality']),coverage=d['coverage'],description=d.get('description',''),owner_id=current_user.id); db.session.add(item); db.session.commit()
    flash('Producto publicado correctamente.','success'); return redirect(url_for('dashboard'))
   return render_template('publish.html')
 

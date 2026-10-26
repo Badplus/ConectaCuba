@@ -78,6 +78,64 @@ class MarketplaceSmokeTests(unittest.TestCase):
         self.assertEqual(self.client.get("/logout").status_code, 405)
         self.assertEqual(self.client.post("/logout", data={"_csrf": self.csrf()}).status_code, 302)
 
+    def test_admin_approves_seller(self):
+        self.register("55500004", "vendedor")
+        self.client.post("/logout", data={"_csrf": self.csrf()})
+        response = self.client.post("/admin/login", data={
+            "_csrf": self.csrf(), "password": "testing-only-admin-password"
+        })
+        self.assertEqual(response.status_code, 302)
+        with self.app.app_context():
+            user_id = User.query.filter_by(phone="55500004").one().id
+        response = self.client.post(f"/admin/user/{user_id}/toggle", data={
+            "_csrf": self.csrf()
+        })
+        self.assertEqual(response.status_code, 302)
+        with self.app.app_context():
+            self.assertTrue(db.session.get(User, user_id).approved)
+
+    def test_admin_rejects_missing_csrf(self):
+        self.assertEqual(self.client.post("/admin/login", data={
+            "password": "testing-only-admin-password"
+        }).status_code, 400)
+
+    def test_chat_message_and_notification(self):
+        self.register("55500005", "comprador")
+        with self.app.app_context():
+            first_id = User.query.filter_by(phone="55500005").one().id
+        self.client.post("/logout", data={"_csrf": self.csrf()})
+        self.register("55500006", "comprador")
+        with self.app.app_context():
+            second_id = User.query.filter_by(phone="55500006").one().id
+        response = self.client.post(f"/chat/{first_id}", data={
+            "_csrf": self.csrf(), "body": "Hola, prueba de mensaje"
+        })
+        self.assertEqual(response.status_code, 302)
+        from app.models import Message, Notification
+        with self.app.app_context():
+            msg = Message.query.filter_by(sender_id=second_id, receiver_id=first_id).one()
+            self.assertEqual(msg.body, "Hola, prueba de mensaje")
+            self.assertIsNotNone(Notification.query.filter_by(user_id=first_id).first())
+
+    def test_chat_rejects_long_message(self):
+        self.register("55500007", "comprador")
+        with self.app.app_context():
+            first_id = User.query.filter_by(phone="55500007").one().id
+        self.client.post("/logout", data={"_csrf": self.csrf()})
+        self.register("55500008", "comprador")
+        response = self.client.post(f"/chat/{first_id}", data={
+            "_csrf": self.csrf(), "body": "x" * 5001
+        })
+        self.assertEqual(response.status_code, 400)
+
+    def test_turnstile_rejects_missing_response_when_enabled(self):
+        self.app.config["TURNSTILE_SITE_KEY"] = "test-site-key"
+        self.app.config["TURNSTILE_SECRET_KEY"] = "test-secret-key"
+        response = self.client.post("/login", data={
+            "_csrf": self.csrf(), "phone": "55500009", "password": "anything"
+        })
+        self.assertEqual(response.status_code, 400)
+
     def test_chat_requires_authentication(self):
         self.assertEqual(self.client.get("/chat/123").status_code, 302)
 

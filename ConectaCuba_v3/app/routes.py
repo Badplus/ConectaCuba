@@ -140,6 +140,11 @@ def register_routes(app):
     return redirect(url_for('index'))
   return render_template('change_password.html')
 
+
+ def pin_digest(reset_id, pin):
+  secret=current_app.secret_key.encode('utf-8')
+  return hmac.new(secret,f'{reset_id}:{pin}'.encode('utf-8'),hashlib.sha256).hexdigest()
+
  @app.route('/forgot-password',methods=['GET','POST'])
  def forgot_password():
   if request.method=='POST':
@@ -152,14 +157,15 @@ def register_routes(app):
     if not recent:
      db.session.add(PasswordResetRequest(user_id=user.id))
      db.session.commit()
-   flash('Si el teléfono está registrado, la solicitud estará disponible para el administrador. Contacta con él por WhatsApp para verificar tu identidad.','success')
+   flash('Solicitud recibida. Si el teléfono está registrado, el administrador podrá revisarla. Solicita el PIN al administrador por tu medio habitual.','success')
    return redirect(url_for('forgot_password'))
   return render_template('forgot_password.html')
 
  @app.route('/admin/password-resets')
  @admin_required
  def admin_password_resets():
-  requests=PasswordResetRequest.query.filter_by(approved_at=None,used_at=None).order_by(
+  requests=PasswordResetRequest.query.filter_by(approved_at=None,used_at=None).filter(
+   PasswordResetRequest.requested_at>=datetime.utcnow()-timedelta(days=1)).order_by(
    PasswordResetRequest.requested_at.desc()).limit(100).all()
   return render_template('admin_password_resets.html',requests=requests)
 
@@ -171,24 +177,59 @@ def register_routes(app):
    abort(404)
   if record.requested_at<datetime.utcnow()-timedelta(days=1):
    abort(400,description='La solicitud ha caducado.')
-  token=secrets.token_urlsafe(32)
-  record.token_hash=hashlib.sha256(token.encode()).hexdigest()
+  # El PIN se muestra una sola vez al administrador y nunca se almacena en claro.
+  pin=f'{secrets.randbelow(100000):05d}'
+  record.token_hash=pin_digest(record.id,pin)
   record.approved_at=datetime.utcnow()
-  record.expires_at=datetime.utcnow()+timedelta(minutes=15)
+  record.expires_at=datetime.utcnow()+timedelta(minutes=10)
+  record.pin_attempts=0
   db.session.commit()
-  link=url_for('reset_password',reset_id=record.id,token=token,_external=True)
-  return render_template('admin_reset_link.html',link=link)
+  response=current_app.make_response(render_template('admin_reset_link.html',pin=pin,phone=record.user.phone))
+  response.headers['Cache-Control']='no-store'
+  response.headers['Referrer-Policy']='no-referrer'
+  return response
 
- @app.route('/reset-password/<int:reset_id>/<token>',methods=['GET','POST'])
- def reset_password(reset_id,token):
-  record=db.session.get(PasswordResetRequest,reset_id)
-  digest=hashlib.sha256(token.encode()).hexdigest()
-  if (not record or not record.token_hash or not secrets.compare_digest(record.token_hash,digest)
-      or record.used_at or not record.expires_at or record.expires_at<datetime.utcnow()):
-   abort(404,description='Enlace inválido o caducado.')
+ @app.route('/verify-recovery-pin',methods=['GET','POST'])
+ def verify_recovery_pin():
+  if request.method=='POST':
+   phone=request.form.get('phone','').strip()
+   pin=request.form.get('pin','').strip()
+   user=User.query.filter_by(phone=phone).first()
+   record=(PasswordResetRequest.query.filter_by(user_id=user.id).filter(
+    PasswordResetRequest.approved_at.isnot(None),PasswordResetRequest.used_at.is_(None)
+   ).order_by(PasswordResetRequest.approved_at.desc()).first() if user else None)
+   if not record or not record.token_hash or not record.expires_at or record.expires_at<=datetime.utcnow() or record.pin_attempts>=5:
+    flash('PIN incorrecto, caducado o sin autorización. Solicita uno nuevo al administrador.','danger')
+    return redirect(url_for('verify_recovery_pin'))
+   if len(pin)!=5 or not pin.isascii() or not pin.isdigit() or not hmac.compare_digest(record.token_hash,pin_digest(record.id,pin)):
+    record.pin_attempts+=1
+    if record.pin_attempts>=5:
+     record.used_at=datetime.utcnow()
+     record.token_hash=None
+    db.session.commit()
+    flash('PIN incorrecto o caducado.','danger')
+    return redirect(url_for('verify_recovery_pin'))
+   session['recovery_reset_id']=record.id
+   return redirect(url_for('reset_password_with_pin'))
+  response=current_app.make_response(render_template('verify_recovery_pin.html'))
+  response.headers['Cache-Control']='no-store'
+  return response
+
+ @app.route('/new-password',methods=['GET','POST'])
+ def reset_password_with_pin():
+  reset_id=session.get('recovery_reset_id')
+  record=db.session.get(PasswordResetRequest,reset_id) if isinstance(reset_id,int) else None
+  if (not record or not record.token_hash or not record.approved_at or record.used_at
+      or not record.expires_at or record.expires_at<=datetime.utcnow() or record.pin_attempts>=5):
+   session.pop('recovery_reset_id',None)
+   flash('La autorización ha caducado. Solicita otro PIN.','danger')
+   return redirect(url_for('verify_recovery_pin'))
   if request.method=='POST':
    password=request.form.get('new_password','')
-   if len(password)<12 or len(password)>128:
+   confirm=request.form.get('confirm_password','')
+   if password!=confirm:
+    flash('Las contraseñas no coinciden.','danger')
+   elif len(password)<12 or len(password)>128:
     flash('La contraseña debe tener entre 12 y 128 caracteres.','danger')
    else:
     record.user.set_password(password)
@@ -198,7 +239,14 @@ def register_routes(app):
     session.clear()
     flash('Contraseña actualizada. Ya puedes entrar.','success')
     return redirect(url_for('login'))
-  return render_template('reset_password.html')
+  response=current_app.make_response(render_template('reset_password.html'))
+  response.headers['Cache-Control']='no-store'
+  return response
+
+ @app.route('/reset-password/<int:reset_id>/<token>',methods=['GET','POST'])
+ def reset_password(reset_id,token):
+  # Los enlaces antiguos dejan de estar disponibles al pasar a PIN.
+  abort(410,description='La recuperación ahora se realiza mediante PIN.')
 
  @app.route('/pending')
  @login_required

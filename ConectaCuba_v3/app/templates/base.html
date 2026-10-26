@@ -25,7 +25,10 @@
           {% else %}
             <a href="{{ url_for('pending') }}">Activación pendiente</a>
           {% endif %}
-          <a href="{{ url_for('logout') }}">Salir</a>
+          <form method="post" action="{{ url_for('logout') }}" style="display:inline">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <button type="submit" class="btn secondary">Salir</button>
+          </form>
         {% else %}
           <a href="{{ url_for('login') }}">Entrar</a>
           <a class="btn primary" href="{{ url_for('register') }}">Registrarme</a>

@@ -1,6 +1,8 @@
 import os
+import secrets
+import hmac
 from datetime import timedelta
-from flask import Flask, request
+from flask import Flask, request, session, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -38,6 +40,23 @@ def create_app():
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
+
+    @app.context_processor
+    def security_form_context():
+        def csrf_token():
+            if "_csrf_token" not in session:
+                session["_csrf_token"] = secrets.token_urlsafe(32)
+            return session["_csrf_token"]
+        return {"csrf_token": csrf_token,
+                "turnstile_site_key": app.config["TURNSTILE_SITE_KEY"]}
+
+    @app.before_request
+    def check_form_csrf():
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            expected = session.get("_csrf_token", "")
+            received = request.form.get("_csrf", "")
+            if not expected or not hmac.compare_digest(expected, received):
+                abort(400, description="Token de seguridad del formulario inválido. Recarga la página.")
 
     db.init_app(app)
     login_manager.init_app(app)

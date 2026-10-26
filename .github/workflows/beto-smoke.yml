@@ -1,0 +1,24 @@
+name: Mercado BETO Plus - pruebas aisladas
+on:
+  push:
+    branches:
+      - revision-seguridad-beto-plus
+  workflow_dispatch:
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ConectaCuba_v3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r requirements.txt
+      - name: Pruebas con SQLite temporal
+        env:
+          DATABASE_URL: ''
+          TURNSTILE_SITE_KEY: ''
+          TURNSTILE_SECRET_KEY: ''
+        run: python -m unittest -v test_smoke

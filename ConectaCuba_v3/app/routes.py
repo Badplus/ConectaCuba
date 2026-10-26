@@ -13,8 +13,8 @@ def approved_required(fn):
   return fn(*a,**k)
  return w
 
-# "productor" se conserva temporalmente para no bloquear cuentas antiguas.
-SELLER_ROLES = {'vendedor', 'admin_bodega', 'productor'}
+# La base de datos de prueba se limpió; los roles antiguos ya no se admiten.
+SELLER_ROLES = {'vendedor', 'admin_bodega'}
 REGISTRATION_ROLES = {'comprador', 'vendedor', 'admin_bodega'}
 
 def seller_required(fn):
@@ -59,7 +59,7 @@ def register_routes(app):
   q=request.args.get('q','').strip(); kind=request.args.get('kind',''); muni=request.args.get('municipality','')
   qry=Listing.query.join(User).filter(Listing.active.is_(True),User.approved.is_(True))
   if q: qry=qry.filter(or_(Listing.product.ilike(f'%{q}%'),Listing.custom_product.ilike(f'%{q}%')))
-  if kind in ['oferta','demanda']: qry=qry.filter(Listing.kind==kind)
+  qry=qry.filter(Listing.kind=='oferta')
   if muni in MUNICIPIOS: qry=qry.filter(Listing.municipality==muni)
   return render_template('index.html',listings=qry.order_by(Listing.created_at.desc()).all(),q=q,kind=kind,muni=muni)
 
@@ -121,7 +121,7 @@ def register_routes(app):
  @login_required
  def dashboard():
   if not current_user.approved: return redirect(url_for('pending'))
-  if current_user.role=='comprador': return redirect(url_for('index'))
+  if current_user.role not in SELLER_ROLES: return redirect(url_for('index'))
   ls=Listing.query.filter_by(owner_id=current_user.id).order_by(Listing.created_at.desc()).all(); notes=Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).limit(8).all(); return render_template('dashboard.html',listings=ls,notes=notes)
 
  @app.route('/publish',methods=['GET','POST'])
@@ -131,11 +131,20 @@ def register_routes(app):
  def publish():
   if request.method=='POST':
    d=request.form
-   if d.get('kind')!='oferta': abort(400, description='Solo se permiten publicaciones de venta.')
-   item=Listing(kind='oferta',product=d['product'],custom_product=d.get('custom_product') or None,quantity=float(d['quantity']),unit=d['unit'],price=float(d['price']),municipality=d['municipality'],coverage=d['coverage'],description=d.get('description',''),owner_id=current_user.id); db.session.add(item); db.session.commit()
+   if d.get('kind', 'oferta') != 'oferta': abort(400, description='Solo se permiten publicaciones de venta.')
+   if d.get('product') not in PRODUCTOS or d.get('municipality') not in MUNICIPIOS:
+    abort(400, description='Producto o municipio no válido.')
+   try:
+    quantity=float(d.get('quantity',''))
+    price=float(d.get('price',''))
+   except (ValueError, TypeError):
+    abort(400, description='Cantidad o precio no válido.')
+   if not (0 < quantity < 1e12 and 0 <= price < 1e12):
+    abort(400, description='Cantidad o precio fuera de rango.')
+   item=Listing(kind='oferta',product=d['product'],custom_product=d.get('custom_product') or None,quantity=quantity,unit=d['unit'],price=price,municipality=d['municipality'],coverage=d['coverage'],description=d.get('description',''),owner_id=current_user.id); db.session.add(item); db.session.commit()
    for other,score,level in matches_for(item)[:10]:
     db.session.add(Notification(user_id=current_user.id,listing_id=other.id,message=f'{level}: {product_name(other)} en {other.municipality}.')); db.session.add(Notification(user_id=other.owner_id,listing_id=item.id,message=f'{level}: nueva coincidencia de {product_name(item)} en {item.municipality}.'))
-   db.session.commit(); return redirect(url_for('matches',listing_id=item.id))
+   db.session.commit(); flash('Producto publicado correctamente.','success'); return redirect(url_for('dashboard'))
   return render_template('publish.html')
 
  @app.route('/matches/<int:listing_id>')
@@ -143,13 +152,14 @@ def register_routes(app):
  @approved_required
  def matches(listing_id):
   item=db.session.get(Listing,listing_id)
-  if not item or item.owner_id!=current_user.id: abort(403)
+  if not item: abort(404)
+  if item.owner_id!=current_user.id: abort(403)
   return render_template('matches.html',listing=item,matches=matches_for(item))
 
  @app.route('/listing/<int:listing_id>')
  def detail(listing_id):
   item=db.session.get(Listing,listing_id)
-  if not item: abort(404)
+  if not item or not item.active or not item.owner.approved: abort(404)
   return render_template('detail.html',listing=item)
 
  @app.route('/notifications')
@@ -184,11 +194,18 @@ def register_routes(app):
  @app.route('/admin/user/<int:user_id>/toggle',methods=['POST'])
  @admin_required
  def admin_toggle(user_id):
-  u=db.session.get(User,user_id); u.approved=not u.approved; u.approved_at=datetime.utcnow() if u.approved else None
+  u=db.session.get(User,user_id)
+  if not u: abort(404)
+  u.approved=not u.approved; u.approved_at=datetime.utcnow() if u.approved else None
   if u.approved: db.session.add(Notification(user_id=u.id,message='Tu cuenta ha sido ACTIVADA por el administrador.'))
   db.session.commit(); return redirect(url_for('admin'))
 
  @app.route('/admin/commission',methods=['POST'])
  @admin_required
  def admin_commission():
-  s=Setting.query.first(); s.commission=max(0,min(100,float(request.form['commission']))); db.session.commit(); return redirect(url_for('admin'))
+  s=Setting.query.first()
+  if not s: abort(404)
+  try: value=float(request.form['commission'])
+  except (ValueError, KeyError): abort(400)
+  if not (0 <= value <= 100): abort(400)
+  s.commission=value; db.session.commit(); return redirect(url_for('admin'))

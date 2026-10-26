@@ -20,6 +20,7 @@
       {% endfor %}
     </div>
     <form method="post" action="{{ url_for('chat', user_id=other.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <label for="body">Escribe tu mensaje</label>
       <textarea id="body" name="body" rows="3" maxlength="5000" required placeholder="Escribe aquí tu mensaje..."></textarea>
       <button class="btn primary" type="submit">Enviar mensaje</button>

@@ -37,7 +37,7 @@ class RecoveryTests(unittest.TestCase):
   response=self.client.post('/admin/password-resets/'+str(reset_id)+'/approve',data={'_csrf':token})
   self.assertEqual(response.status_code,200)
   import re,html
-  link=html.unescape(re.search(r'https?://[^<\\s]+',response.get_data(as_text=True)).group(0))
+  link=html.unescape(re.search(r'https?://[^<\s]+',response.get_data(as_text=True)).group(0))
   from urllib.parse import urlparse
   path=urlparse(link).path
   self.assertEqual(self.client.get(path).status_code,200)

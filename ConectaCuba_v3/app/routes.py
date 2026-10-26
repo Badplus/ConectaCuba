@@ -32,20 +32,8 @@ def admin_required(fn):
   return fn(*a,**k)
  return w
 
-def product_name(x): return x.custom_product if x.product=='Otro' and x.custom_product else x.product
-def norm(s): return ' '.join((s or '').strip().lower().split())
-def matches_for(item):
- out=[]
- for o in Listing.query.filter(Listing.id!=item.id,Listing.active.is_(True),Listing.kind!=item.kind).all():
-  if not o.owner.approved or norm(product_name(o))!=norm(product_name(item)): continue
-  offer=item if item.kind=='oferta' else o; demand=o if item.kind=='oferta' else item
-  geo=3 if offer.municipality==demand.municipality else (2 if 'provincia' in [offer.coverage,demand.coverage] else 1 if 'cercanos' in [offer.coverage,demand.coverage] else 0)
-  if geo==0: continue
-  qty=2 if offer.quantity>=demand.quantity else 1 if offer.quantity>=demand.quantity*.5 else 0
-  price=3 if offer.price<=demand.price else 0
-  score=geo+qty+price
-  out.append((o,score,'Coincidencia excelente' if score>=7 else 'Buena coincidencia' if score>=5 else 'Coincidencia posible'))
- return sorted(out,key=lambda x:x[1],reverse=True)
+def product_name(x):
+ return x.custom_product if x.product == 'Otro' and x.custom_product else x.product
 
 def register_routes(app):
  @app.context_processor
@@ -56,7 +44,7 @@ def register_routes(app):
 
  @app.route('/')
  def index():
-  q=request.args.get('q','').strip(); kind=request.args.get('kind',''); muni=request.args.get('municipality','')
+  q=request.args.get('q','').strip(); kind='oferta'; muni=request.args.get('municipality','')
   qry=Listing.query.join(User).filter(Listing.active.is_(True),User.approved.is_(True))
   if q: qry=qry.filter(or_(Listing.product.ilike(f'%{q}%'),Listing.custom_product.ilike(f'%{q}%')))
   qry=qry.filter(Listing.kind=='oferta')
@@ -134,6 +122,10 @@ def register_routes(app):
    if d.get('kind', 'oferta') != 'oferta': abort(400, description='Solo se permiten publicaciones de venta.')
    if d.get('product') not in PRODUCTOS or d.get('municipality') not in MUNICIPIOS:
     abort(400, description='Producto o municipio no válido.')
+   if d.get('unit') not in {'lb','kg','unidad','saco','caja','L'} or d.get('coverage') not in {'municipio','cercanos','provincia'}:
+    abort(400, description='Unidad o zona de venta no válida.')
+   if d.get('product') == 'Otro' and not d.get('custom_product','').strip():
+    abort(400, description='Especifica el nombre del producto.')
    try:
     quantity=float(d.get('quantity',''))
     price=float(d.get('price',''))
@@ -142,9 +134,7 @@ def register_routes(app):
    if not (0 < quantity < 1e12 and 0 <= price < 1e12):
     abort(400, description='Cantidad o precio fuera de rango.')
    item=Listing(kind='oferta',product=d['product'],custom_product=d.get('custom_product') or None,quantity=quantity,unit=d['unit'],price=price,municipality=d['municipality'],coverage=d['coverage'],description=d.get('description',''),owner_id=current_user.id); db.session.add(item); db.session.commit()
-   for other,score,level in matches_for(item)[:10]:
-    db.session.add(Notification(user_id=current_user.id,listing_id=other.id,message=f'{level}: {product_name(other)} en {other.municipality}.')); db.session.add(Notification(user_id=other.owner_id,listing_id=item.id,message=f'{level}: nueva coincidencia de {product_name(item)} en {item.municipality}.'))
-   db.session.commit(); flash('Producto publicado correctamente.','success'); return redirect(url_for('dashboard'))
+   flash('Producto publicado correctamente.','success'); return redirect(url_for('dashboard'))
   return render_template('publish.html')
 
  @app.route('/matches/<int:listing_id>')
@@ -154,7 +144,8 @@ def register_routes(app):
   item=db.session.get(Listing,listing_id)
   if not item: abort(404)
   if item.owner_id!=current_user.id: abort(403)
-  return render_template('matches.html',listing=item,matches=matches_for(item))
+  flash('Las coincidencias entre ofertas y demandas ya no se utilizan.','info')
+  return redirect(url_for('dashboard'))
 
  @app.route('/listing/<int:listing_id>')
  def detail(listing_id):
@@ -178,6 +169,7 @@ def register_routes(app):
   if not other or not other.approved or other.id==current_user.id: abort(404)
   if request.method=='POST':
    body=request.form.get('body','').strip()
+   if len(body)>5000: abort(400, description='El mensaje supera el límite permitido.')
    if body: db.session.add(Message(sender_id=current_user.id,receiver_id=other.id,body=body)); db.session.add(Notification(user_id=other.id,message=f'Nuevo mensaje de {current_user.full_name}.')); db.session.commit()
    return redirect(url_for('chat',user_id=user_id))
   msgs=Message.query.filter(or_(and_(Message.sender_id==current_user.id,Message.receiver_id==other.id),and_(Message.sender_id==other.id,Message.receiver_id==current_user.id))).order_by(Message.created_at.asc()).all(); return render_template('chat.html',other=other,msgs=msgs)

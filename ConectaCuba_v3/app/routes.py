@@ -1,3 +1,6 @@
+import json
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 from functools import wraps
 from datetime import datetime
 from flask import render_template,request,redirect,url_for,flash,session,current_app,abort
@@ -35,6 +38,27 @@ def admin_required(fn):
 def product_name(x):
  return x.custom_product if x.product == 'Otro' and x.custom_product else x.product
 
+def turnstile_valid():
+ secret=current_app.config.get('TURNSTILE_SECRET_KEY')
+ site_key=current_app.config.get('TURNSTILE_SITE_KEY')
+ if not secret and not site_key:
+  return True
+ if not secret or not site_key:
+  current_app.logger.error('Turnstile incompleto: faltan claves de configuración.')
+  return False
+ token=request.form.get('cf-turnstile-response','')
+ if not token:
+  return False
+ payload=urlencode({'secret':secret,'response':token,'remoteip':request.remote_addr or ''}).encode('utf-8')
+ try:
+  req=Request('https://challenges.cloudflare.com/turnstile/v0/siteverify',data=payload,method='POST')
+  with urlopen(req,timeout=5) as response:
+   result=json.load(response)
+  return result.get('success') is True
+ except Exception:
+  current_app.logger.exception('No se pudo verificar Turnstile')
+  return False
+
 def register_routes(app):
  @app.context_processor
  def ctx():
@@ -54,6 +78,7 @@ def register_routes(app):
  @app.route('/register',methods=['GET','POST'])
  def register():
   if request.method=='POST':
+   if not turnstile_valid(): abort(400, description='Verificación de seguridad fallida.')
    d=request.form
    phone=d.get('phone','').strip()
    role=d.get('role','').strip()
@@ -94,6 +119,7 @@ def register_routes(app):
  @app.route('/login',methods=['GET','POST'])
  def login():
   if request.method=='POST':
+   if not turnstile_valid(): abort(400, description='Verificación de seguridad fallida.')
    u=User.query.filter_by(phone=request.form['phone'].strip()).first()
    if not u or not u.check_password(request.form['password']): flash('Credenciales incorrectas.','danger'); return redirect(url_for('login'))
    login_user(u)
@@ -176,6 +202,7 @@ def register_routes(app):
 
  @app.route('/admin/login',methods=['GET','POST'])
  def admin_login():
+  if request.method=='POST' and not turnstile_valid(): abort(400, description='Verificación de seguridad fallida.')
   if request.method=='POST' and request.form.get('password')==current_app.config['ADMIN_PASSWORD']: session['admin_ok']=True; return redirect(url_for('admin'))
   return render_template('admin_login.html')
 

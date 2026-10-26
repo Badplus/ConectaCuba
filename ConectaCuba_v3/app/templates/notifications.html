@@ -1,16 +1,20 @@
-{% extends 'base.html' %}{% block content %}
-<div class="container"><h2>Notificaciones</h2><div class="list">
-{% for n in notes %}
-<a class="row" href="{{url_for('open_notification',notification_id=n.id)}}" style="text-decoration:none;color:inherit">
-<div>
-  {% if n.context_listing_a_id and n.context_listing_b_id %}
-  <span class="pill">COINCIDENCIA</span>
-  {% endif %}
-  <div style="margin-top:6px">{{n.message}}</div>
-  <div class="muted">{{n.created_at.strftime('%d/%m/%Y %H:%M')}}</div>
+{% extends 'base.html' %}
+{% block title %}Notificaciones · Mercado BETO Plus{% endblock %}
+{% block content %}
+<div class="container">
+  <h2>Notificaciones</h2>
+  <div class="list">
+    {% for n in notes %}
+      <div class="card">
+        <p>{{ n.message }}</p>
+        <p class="muted">{{ n.created_at.strftime('%d/%m/%Y %H:%M') if n.created_at else '' }}</p>
+        {% if n.listing_id %}
+          <a class="btn secondary" href="{{ url_for('detail', listing_id=n.listing_id) }}">Ver publicación</a>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="card">No hay notificaciones.</div>
+    {% endfor %}
+  </div>
 </div>
-<div>{% if n.context_listing_a_id and n.context_listing_b_id %}Abrir conversación →{% elif n.listing_id %}Ver publicación →{% else %}Abrir →{% endif %}</div>
-</a>
-{% else %}<div class="card">No hay notificaciones.</div>{% endfor %}
-</div></div>
 {% endblock %}

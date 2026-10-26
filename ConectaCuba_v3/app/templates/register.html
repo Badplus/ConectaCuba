@@ -7,6 +7,7 @@
     <p class="muted">Los compradores pueden entrar inmediatamente después de registrarse. Los vendedores independientes y administradores de bodegas necesitan aprobación del administrador de la plataforma antes de publicar.</p>
 
     <form method="post" action="{{ url_for('register') }}" class="grid">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <div>
         <label for="full_name">Nombre completo</label>
         <input id="full_name" name="full_name" autocomplete="name" maxlength="120" required>
@@ -39,6 +40,11 @@
         <label for="address">Dirección (dato privado de la cuenta)</label>
         <input id="address" name="address" autocomplete="street-address" maxlength="255" required>
       </div>
+      {% if turnstile_site_key %}
+      <div class="full">
+        <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-language="es"></div>
+      </div>
+      {% endif %}
       <div class="full">
         <button type="submit" class="btn primary">Crear mi cuenta</button>
       </div>
@@ -46,4 +52,7 @@
     <p class="muted">No se realiza verificación por SMS en esta etapa.</p>
   </div>
 </div>
+{% if turnstile_site_key %}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endif %}
 {% endblock %}

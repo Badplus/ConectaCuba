@@ -6,6 +6,7 @@
     <h2>Publicar producto en venta</h2>
     <p class="muted">Ofrece tus productos a los compradores de Mercado BETO Plus.</p>
     <form method="post" action="{{ url_for('publish') }}" class="grid">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <input type="hidden" name="kind" value="oferta">
       <div>
         <label for="product">Producto</label>

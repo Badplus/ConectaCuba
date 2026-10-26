@@ -7,6 +7,7 @@
     <p class="muted">Los compradores pueden entrar inmediatamente después de registrarse. Los vendedores independientes y administradores de bodegas necesitan aprobación del administrador de la plataforma antes de publicar.</p>
 
     <form method="post" action="{{ url_for('register') }}" class="grid">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <div>
         <label for="full_name">Nombre completo</label>
         <input id="full_name" name="full_name" autocomplete="name" maxlength="120" required>

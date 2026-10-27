@@ -35,7 +35,28 @@ def send_push(user_id, title, body, url="/notifications"):
             else:
                 current_app.logger.warning("PUSH_DIAG: error de servicio push; HTTP=%s; tipo=%s", status, type(exc).__name__)
         except Exception as exc:
-            current_app.logger.error("PUSH_DIAG: fallo local al preparar/enviar push; tipo=%s; clave_pem=%s; subject_mailto=%s", type(exc).__name__, private_key.startswith("-----BEGIN PRIVATE KEY-----") and "-----END PRIVATE KEY-----" in private_key, subject.startswith("mailto:"))
+            # Diagnose key validity without logging any private or public key material.
+            key_valid = False
+            public_matches = False
+            try:
+                import base64
+                from cryptography.hazmat.primitives import serialization
+                from cryptography.hazmat.primitives.asymmetric import ec
+                loaded = serialization.load_pem_private_key(private_key.encode("utf-8"), password=None)
+                key_valid = isinstance(loaded, ec.EllipticCurvePrivateKey) and isinstance(loaded.curve, ec.SECP256R1)
+                if key_valid:
+                    expected = loaded.public_key().public_bytes(
+                        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+                    )
+                    configured = os.environ["VAPID_PUBLIC_KEY"].strip()
+                    configured_bytes = base64.urlsafe_b64decode(configured + "=" * (-len(configured) % 4))
+                    public_matches = expected == configured_bytes
+            except Exception:
+                pass
+            current_app.logger.error(
+                "PUSH_DIAG: tipo=%s; private_key_valid=%s; public_key_matches=%s; subject_mailto=%s",
+                type(exc).__name__, key_valid, public_matches, subject.startswith("mailto:")
+            )
 
 
 def valid_subscription(data):

@@ -16,7 +16,8 @@ from flask import render_template,request,redirect,url_for,flash,session,current
 from flask_login import login_user,logout_user,login_required,current_user
 from sqlalchemy import or_,and_
 from . import db,MUNICIPIOS,PRODUCTOS
-from .models import User,Listing,Notification,Message,Setting,PasswordResetRequest
+from .models import User,Listing,Notification,Message,Setting,PasswordResetRequest,PushSubscription
+from .push import send_push,push_configured,valid_subscription
 
 def approved_required(fn):
  @wraps(fn)
@@ -327,7 +328,10 @@ def register_routes(app):
    item=Listing(kind='oferta',product=d['product'],custom_product=d.get('custom_product') or None,quantity=quantity,unit=d['unit'],price=price,municipality=d['municipality'],coverage=d['coverage'],description=d.get('description',''),owner_id=current_user.id); db.session.add(item); db.session.commit()
    for other,score,level in matches_for(item)[:10]:
     db.session.add(Notification(user_id=current_user.id,listing_id=other.id,message=f'{level}: {product_name(other)} en {other.municipality}.')); db.session.add(Notification(user_id=other.owner_id,listing_id=item.id,message=f'{level}: nueva coincidencia de {product_name(item)} en {item.municipality}.'))
-   db.session.commit(); flash('Producto publicado correctamente.','success'); return redirect(url_for('dashboard'))
+   db.session.commit()
+   for other,score,level in matches_for(item)[:10]:
+    send_push(other.owner_id,'Nueva coincidencia en Mercado BETO Plus',f'{level}: {product_name(item)}',url_for('detail',listing_id=item.id))
+   flash('Producto publicado correctamente.','success'); return redirect(url_for('dashboard'))
   return render_template('publish.html')
 
  def can_edit_listing(item):
@@ -449,6 +453,46 @@ def register_routes(app):
   if not item or not item.active or not item.owner.approved: abort(404)
   return render_template('detail.html',listing=item)
 
+ @app.route('/sw.js')
+ def service_worker():
+  response=current_app.send_static_file('sw.js')
+  response.headers['Cache-Control']='no-cache'
+  response.headers['Service-Worker-Allowed']='/'
+  return response
+
+ @app.route('/api/push/public-key')
+ @login_required
+ def push_public_key():
+  return current_app.response_class(response=json.dumps({'publicKey':os.getenv('VAPID_PUBLIC_KEY','')}),mimetype='application/json')
+
+ @app.route('/api/push/subscribe',methods=['POST'])
+ @login_required
+ @approved_required
+ def push_subscribe():
+  if not push_configured(): abort(503)
+  data=request.get_json(silent=True)
+  if not valid_subscription(data): abort(400)
+  endpoint=data['endpoint']
+  existing=PushSubscription.query.filter_by(endpoint=endpoint).first()
+  if existing and existing.user_id!=current_user.id: abort(409)
+  if not existing:
+   existing=PushSubscription(user_id=current_user.id,endpoint=endpoint)
+   db.session.add(existing)
+  existing.p256dh=data['keys']['p256dh']
+  existing.auth=data['keys']['auth']
+  db.session.commit()
+  return current_app.response_class(response=json.dumps({'ok':True}),mimetype='application/json')
+
+ @app.route('/api/push/unsubscribe',methods=['POST'])
+ @login_required
+ def push_unsubscribe():
+  data=request.get_json(silent=True) or {}
+  endpoint=data.get('endpoint')
+  if not isinstance(endpoint,str): abort(400)
+  PushSubscription.query.filter_by(user_id=current_user.id,endpoint=endpoint).delete()
+  db.session.commit()
+  return current_app.response_class(response=json.dumps({'ok':True}),mimetype='application/json')
+
  @app.route('/api/notifications/status')
  @login_required
  def notifications_status():
@@ -520,7 +564,11 @@ def register_routes(app):
   if not other or not other.approved or other.id==current_user.id: abort(404)
   if request.method=='POST':
    body=request.form.get('body','').strip()
-   if body: db.session.add(Message(sender_id=current_user.id,receiver_id=other.id,body=body)); db.session.add(Notification(user_id=other.id,message=f'Nuevo mensaje de {current_user.full_name}.')); db.session.commit()
+   if body:
+    db.session.add(Message(sender_id=current_user.id,receiver_id=other.id,body=body))
+    db.session.add(Notification(user_id=other.id,message=f'Nuevo mensaje de {current_user.full_name}.'))
+    db.session.commit()
+    send_push(other.id,'Nuevo mensaje en Mercado BETO Plus',f'{current_user.full_name} te ha escrito.',url_for('chat',user_id=current_user.id))
    return redirect(url_for('chat',user_id=user_id))
   msgs=Message.query.filter(or_(and_(Message.sender_id==current_user.id,Message.receiver_id==other.id),and_(Message.sender_id==other.id,Message.receiver_id==current_user.id))).order_by(Message.created_at.asc()).all(); return render_template('chat.html',other=other,msgs=msgs)
 
@@ -546,7 +594,9 @@ def register_routes(app):
   if not u: abort(404)
   u.approved=not u.approved; u.approved_at=datetime.utcnow() if u.approved else None
   if u.approved: db.session.add(Notification(user_id=u.id,message='Tu cuenta ha sido ACTIVADA por el administrador.'))
-  db.session.commit(); return redirect(url_for('admin'))
+  db.session.commit()
+  if u.approved: send_push(u.id,'Cuenta activada','Tu cuenta de Mercado BETO Plus ha sido activada.',url_for('dashboard'))
+  return redirect(url_for('admin'))
 
  @app.route('/admin/commission',methods=['POST'])
  @admin_required

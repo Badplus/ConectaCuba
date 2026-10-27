@@ -34,7 +34,7 @@ def create_app():
  def check_form_csrf():
   if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'}:
    expected=session.get('_csrf_token','')
-   received=request.form.get('_csrf','')
+   received=request.form.get('_csrf','') or request.headers.get('X-CSRF-Token','')
    if not expected or not hmac.compare_digest(expected, received):
     abort(400, description='Token de seguridad inválido. Recarga la página.')
 

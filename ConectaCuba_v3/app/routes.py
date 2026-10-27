@@ -328,7 +328,10 @@ def register_routes(app):
    item=Listing(kind='oferta',product=d['product'],custom_product=d.get('custom_product') or None,quantity=quantity,unit=d['unit'],price=price,municipality=d['municipality'],coverage=d['coverage'],description=d.get('description',''),owner_id=current_user.id); db.session.add(item); db.session.commit()
    for other,score,level in matches_for(item)[:10]:
     db.session.add(Notification(user_id=current_user.id,listing_id=other.id,message=f'{level}: {product_name(other)} en {other.municipality}.')); db.session.add(Notification(user_id=other.owner_id,listing_id=item.id,message=f'{level}: nueva coincidencia de {product_name(item)} en {item.municipality}.'))
-   db.session.commit(); flash('Producto publicado correctamente.','success'); return redirect(url_for('dashboard'))
+   db.session.commit()
+   for other,score,level in matches_for(item)[:10]:
+    send_push(other.owner_id,'Nueva coincidencia en Mercado BETO Plus',f'{level}: {product_name(item)}',url_for('detail',listing_id=item.id))
+   flash('Producto publicado correctamente.','success'); return redirect(url_for('dashboard'))
   return render_template('publish.html')
 
  def can_edit_listing(item):
@@ -591,7 +594,9 @@ def register_routes(app):
   if not u: abort(404)
   u.approved=not u.approved; u.approved_at=datetime.utcnow() if u.approved else None
   if u.approved: db.session.add(Notification(user_id=u.id,message='Tu cuenta ha sido ACTIVADA por el administrador.'))
-  db.session.commit(); return redirect(url_for('admin'))
+  db.session.commit()
+  if u.approved: send_push(u.id,'Cuenta activada','Tu cuenta de Mercado BETO Plus ha sido activada.',url_for('dashboard'))
+  return redirect(url_for('admin'))
 
  @app.route('/admin/commission',methods=['POST'])
  @admin_required

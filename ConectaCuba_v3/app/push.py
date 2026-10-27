@@ -15,7 +15,7 @@ def send_push(user_id, title, body, url="/notifications"):
     if not push_configured():
         return
     from pywebpush import webpush, WebPushException
-    private_key = os.environ["VAPID_PRIVATE_KEY"].replace("\\n", "\n")
+    private_key = os.environ["VAPID_PRIVATE_KEY"].strip().replace("\\n", "\n")
     subject = os.environ["VAPID_SUBJECT"]
     payload = json.dumps({"title": title, "body": body[:200], "url": url}, ensure_ascii=False)
     for subscription in PushSubscription.query.filter_by(user_id=user_id).all():
@@ -33,9 +33,9 @@ def send_push(user_id, title, body, url="/notifications"):
                 db.session.delete(subscription)
                 db.session.commit()
             else:
-                current_app.logger.warning("No se pudo enviar aviso push: HTTP %s", status)
-        except Exception:
-            current_app.logger.exception("Error al enviar aviso push")
+                current_app.logger.warning("PUSH_DIAG: error de servicio push; HTTP=%s; tipo=%s", status, type(exc).__name__)
+        except Exception as exc:
+            current_app.logger.error("PUSH_DIAG: fallo local al preparar/enviar push; tipo=%s; clave_pem=%s; subject_mailto=%s", type(exc).__name__, private_key.startswith("-----BEGIN PRIVATE KEY-----") and "-----END PRIVATE KEY-----" in private_key, subject.startswith("mailto:"))
 
 
 def valid_subscription(data):

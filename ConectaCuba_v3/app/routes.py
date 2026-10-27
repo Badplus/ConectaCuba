@@ -472,6 +472,8 @@ def register_routes(app):
   if not n or n.user_id!=current_user.id: abort(404)
   n.read=True
   db.session.commit()
+  if n.message.startswith('Nuevo mensaje de '):
+   return redirect(url_for('messages_inbox'))
   if n.listing_id:
    item=db.session.get(Listing,n.listing_id)
    if item and item.active and item.owner.approved:

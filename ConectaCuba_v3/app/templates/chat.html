@@ -1,12 +1,62 @@
 {% extends 'base.html' %}
-{% block title %}Chat privado · Mercado BETO Plus{% endblock %}
+{% block title %}Chat privado · Mercado BETO Plus<script>
+(() => {
+ const box=document.getElementById('live-chat-messages');
+ let signature='';
+ async function refreshChat(){
+  if(document.hidden) return;
+  try {
+   const response=await fetch("{{ url_for('chat_messages_api',user_id=other.id) }}",{credentials:'same-origin',cache:'no-store'});
+   if(!response.ok) return;
+   const data=await response.json();
+   if(!Array.isArray(data.messages)) return;
+   const next=data.messages.map(m=>m.id).join(',');
+   if(next===signature) return;
+   const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<100;
+   box.replaceChildren();
+   for(const msg of data.messages){
+    const outer=document.createElement('div');
+    outer.className='msg '+(msg.mine?'mine':'theirs');
+    outer.style.maxWidth='85%';
+    outer.style.alignSelf=msg.mine?'flex-end':'flex-start';
+    const card=document.createElement('div');card.className='card';card.style.padding='12px';
+    const name=document.createElement('strong');name.textContent=msg.mine?'Tú':{{ other.full_name|tojson }};
+    const body=document.createElement('p');body.textContent=msg.body;body.style.whiteSpace='pre-wrap';body.style.overflowWrap='anywhere';
+    const date=document.createElement('small');date.className='muted';date.textContent=msg.date;
+    card.append(name,body,date);outer.append(card);box.append(outer);
+   }
+   signature=next;
+   if(nearBottom) box.scrollTop=box.scrollHeight;
+  }catch(_){}
+ }
+ const form=document.getElementById('live-chat-form');
+ form.addEventListener('submit',async event=>{
+  event.preventDefault();
+  const button=form.querySelector('button[type="submit"]');
+  const body=form.querySelector('textarea[name="body"]');
+  if(!body.value.trim())return;
+  button.disabled=true;
+  try{
+   const response=await fetch(form.action,{method:'POST',body:new FormData(form),credentials:'same-origin'});
+   if(!response.ok)throw new Error('No se pudo enviar');
+   body.value='';
+   await refreshChat();
+  }catch(_){alert('No se pudo enviar el mensaje. Inténtalo de nuevo.')}
+  finally{button.disabled=false}
+ });
+ refreshChat();
+ setInterval(refreshChat,3000);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshChat()});
+})();
+</script>
+{% endblock %}
 {% block content %}
 <div class="container">
   <div class="card">
     <p class="muted">Mercado BETO Plus · Mensajería privada</p>
     <h1>Conversación con {{ other.full_name }}</h1>
     <p class="muted">Los mensajes de esta conversación solo se muestran a sus participantes.</p>
-    <div class="chat-messages" aria-label="Historial de mensajes" style="display:flex;flex-direction:column;gap:12px;margin:20px 0">
+    <div id="live-chat-messages" class="chat-messages" aria-label="Historial de mensajes" style="display:flex;flex-direction:column;gap:12px;margin:20px 0">
       {% for msg in msgs %}
         <div class="msg {{ 'mine' if msg.sender_id == current_user.id else 'theirs' }}" style="max-width:85%;align-self:{{ 'flex-end' if msg.sender_id == current_user.id else 'flex-start' }}">
           <div class="card" style="padding:12px">
@@ -19,7 +69,7 @@
         <p class="muted">Aún no hay mensajes. Puedes iniciar la conversación.</p>
       {% endfor %}
     </div>
-    <form method="post" action="{{ url_for('chat', user_id=other.id) }}">
+    <form id="live-chat-form" method="post" action="{{ url_for('chat', user_id=other.id) }}">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <label for="body">Escribe tu mensaje</label>
       <textarea id="body" name="body" rows="3" maxlength="5000" required placeholder="Escribe aquí tu mensaje..."></textarea>

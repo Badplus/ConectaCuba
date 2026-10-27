@@ -1,5 +1,5 @@
 {% extends 'base.html' %}{% block content %}
-<div class="container"><h2>Notificaciones</h2><p><a class="btn primary" href="{{ url_for('messages_inbox') }}">Mis conversaciones y mensajes</a></p><div class="list">
+<div class="container"><h2>Notificaciones</h2><p><a class="btn primary" href="{{ url_for('messages_inbox') }}">Mis conversaciones y mensajes</a></p><div class="list" id="live-notifications">
 {% for n in notes %}
 <a class="row" href="{{url_for('open_notification',notification_id=n.id)}}" style="text-decoration:none;color:inherit">
 <div>
@@ -13,4 +13,37 @@
 </a>
 {% else %}<div class="card">No hay notificaciones.</div>{% endfor %}
 </div></div>
+<script>
+(() => {
+ const box=document.getElementById('live-notifications');
+ let signature='';
+ async function refreshNotifications(){
+  if(document.hidden)return;
+  try{
+   const response=await fetch("{{ url_for('notifications_list_api') }}",{credentials:'same-origin',cache:'no-store'});
+   if(!response.ok)return;
+   const data=await response.json();
+   if(!Array.isArray(data.notifications))return;
+   const next=data.notifications.map(n=>n.id).join(',');
+   if(next===signature)return;
+   box.replaceChildren();
+   for(const n of data.notifications){
+    const link=document.createElement('a');link.className='row';link.href={{ url_for('notifications')|tojson }}+'/'+n.id+'/open';link.style.textDecoration='none';link.style.color='inherit';
+    const info=document.createElement('div');
+    if(n.context){const pill=document.createElement('span');pill.className='pill';pill.textContent='COINCIDENCIA';info.append(pill)}
+    const message=document.createElement('div');message.style.marginTop='6px';message.textContent=n.message;
+    const date=document.createElement('div');date.className='muted';date.textContent=n.date;
+    info.append(message,date);
+    const action=document.createElement('div');action.textContent=n.chat?'Ver conversaciones →':n.context?'Abrir conversación →':n.listing?'Ver publicación →':'Abrir →';
+    link.append(info,action);box.append(link);
+   }
+   if(!data.notifications.length){const empty=document.createElement('div');empty.className='card';empty.textContent='No hay notificaciones.';box.append(empty)}
+   signature=next;
+  }catch(_){}
+ }
+ refreshNotifications();
+ setInterval(refreshNotifications,3000);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshNotifications()});
+})();
+</script>
 {% endblock %}

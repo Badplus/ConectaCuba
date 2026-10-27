@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}Mercado BETO Plus{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -47,6 +48,10 @@
     Mercado BETO Plus — Tu bodega de barrio, más cerca de ti.
     Comisión actual de la plataforma: {{ commission }}%
   </footer>
+  {% if current_user.is_authenticated and current_user.approved %}
+  <div class="container" style="padding:8px 0"><button id="push-toggle" class="btn secondary" type="button">Activar avisos en este dispositivo</button></div>
+  <script src="{{ url_for('static', filename='push.js') }}" defer></script>
+  {% endif %}
   {% if current_user.is_authenticated %}
   <div id="notification-live-alert" role="status" aria-live="polite" style="display:none;position:fixed;bottom:18px;right:18px;z-index:1000;background:#163b30;color:white;padding:14px 18px;border-radius:10px;box-shadow:0 4px 18px #0003;max-width:310px">
     Tienes nuevas notificaciones. <a href="{{ url_for('notifications') }}" style="color:white;text-decoration:underline">Verlas</a>

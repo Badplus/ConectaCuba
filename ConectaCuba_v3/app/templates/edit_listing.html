@@ -1,126 +1,16 @@
-{% extends 'base.html' %}{% block content %}
-<div class="container"><div class="form">
-<h2>Actualizar publicación</h2>
-<p class="muted">Puedes modificar, agotar, eliminar o añadir productos sin crear otra publicación.</p>
-
-<form method="post" id="edit-form">
-<input type="hidden" name="_csrf" value="{{csrf_token()}}">
-
-<div class="grid">
-<div>
-<label>Disponibilidad geográfica</label>
-<select name="coverage">
-<option value="municipio" {% if listing.coverage=='municipio' %}selected{% endif %}>Solo este municipio</option>
-<option value="cercanos" {% if listing.coverage=='cercanos' %}selected{% endif %}>Municipios cercanos</option>
-<option value="provincia" {% if listing.coverage=='provincia' %}selected{% endif %}>Toda esta provincia</option>
-<option value="ambas_provincias" {% if listing.coverage=='ambas_provincias' %}selected{% endif %}>Santiago de Cuba y Holguín</option>
-</select>
-</div>
-<div class="full">
-<label>Descripción general</label>
-<textarea name="description" maxlength="1200">{{listing.description or ''}}</textarea>
-</div>
-</div>
-
-<h3>Productos</h3>
-<div id="products">
-{% for item in listing.items %}
-<div class="product-editor card {% if not item.active %}product-closed{% endif %}">
-<input type="hidden" name="item_id[]" value="{{item.id}}">
-<div class="product-editor-head">
-<strong>{% if item.active %}Disponible{% else %}Cerrado{% endif %}: {{item.display_product}}</strong>
-<label class="remove-check"><input type="checkbox" name="remove_item[]" value="{{item.id}}"> Eliminar producto</label>
-</div>
-<div class="grid">
-<div>
-<label>Producto</label>
-<select name="product[]" class="product-select" required>
-{% for p in PRODUCTOS %}<option value="{{p}}" {% if item.product==p %}selected{% endif %}>{{p}}</option>{% endfor %}
-</select>
-</div>
-<div class="custom-wrap" {% if item.product!='Otro' %}hidden{% endif %}>
-<label>¿Qué producto es?</label>
-<input name="custom_product[]" class="custom-product" maxlength="120" value="{{item.custom_product or ''}}">
-</div>
-<div>
-<label>Cantidad disponible</label>
-<input type="number" min="0" step="0.001" name="quantity[]" value="{{item.quantity}}" required>
-<div class="muted">0 = agotado</div>
-</div>
-<div>
-<label>Unidad</label>
-<select name="unit[]" required>
-{% for u in ['lb','kg','unidad','saco','caja','L'] %}<option value="{{u}}" {% if item.unit==u %}selected{% endif %}>{{u}}</option>{% endfor %}
-</select>
-</div>
-<div>
-<label>Precio CUP/unidad</label>
-<input type="number" min="0" step="0.01" name="price[]" value="{{item.price}}" required>
-</div>
-</div>
-</div>
-{% endfor %}
-</div>
-
-<button type="button" id="add-product" class="btn secondary">+ Añadir otro producto</button>
-<br><br>
-<button class="btn primary">Guardar cambios y recalcular coincidencias</button>
-<a class="btn secondary" href="{{url_for('dashboard')}}">Cancelar</a>
-</form>
-</div></div>
-
-<template id="product-template">
-<div class="product-editor card">
-<input type="hidden" name="item_id[]" value="">
-<div class="product-editor-head">
-<strong>Nuevo producto</strong>
-<button type="button" class="remove-new btn danger">Quitar</button>
-</div>
-<div class="grid">
-<div>
-<label>Producto</label>
-<select name="product[]" class="product-select" required>
-{% for p in PRODUCTOS %}<option value="{{p}}">{{p}}</option>{% endfor %}
-</select>
-</div>
-<div class="custom-wrap" hidden>
-<label>¿Qué producto es?</label>
-<input name="custom_product[]" class="custom-product" maxlength="120">
-</div>
-<div><label>Cantidad</label><input type="number" min="0.001" step="0.001" name="quantity[]" required></div>
-<div>
-<label>Unidad</label>
-<select name="unit[]" required><option>lb</option><option>kg</option><option>unidad</option><option>saco</option><option>caja</option><option>L</option></select>
-</div>
-<div><label>Precio CUP/unidad</label><input type="number" min="0" step="0.01" name="price[]" required></div>
-</div>
-</div>
-</template>
-
-<script>
-function configure(card){
- const select=card.querySelector('.product-select'),
-       wrap=card.querySelector('.custom-wrap'),
-       custom=card.querySelector('.custom-product');
- if(!select)return;
- function toggle(){
-   const other=select.value==='Otro';
-   wrap.hidden=!other;
-   custom.required=other;
-   if(!other)custom.value='';
- }
- select.addEventListener('change',toggle);toggle();
-
- const remove=card.querySelector('.remove-new');
- if(remove)remove.addEventListener('click',()=>card.remove());
-}
-document.querySelectorAll('.product-editor').forEach(configure);
-
-document.getElementById('add-product').addEventListener('click',()=>{
- const node=document.getElementById('product-template').content.cloneNode(true);
- const card=node.querySelector('.product-editor');
- document.getElementById('products').appendChild(node);
- configure(card);
-});
-</script>
+{% extends 'base.html' %}
+{% block content %}
+<div class="container"><div class="form"><h2>Editar publicación</h2>
+<form method="post">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<label>Producto</label><select name="product">{% for p in PRODUCTOS %}<option value="{{ p }}" {% if p==listing.product %}selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+<label>Nombre personalizado</label><input name="custom_product" maxlength="120" value="{{ listing.custom_product or '' }}">
+<label>Cantidad</label><input name="quantity" type="number" min="0.001" step="0.001" value="{{ listing.quantity }}" required>
+<label>Unidad</label><select name="unit">{% for u in ['lb','kg','unidad','saco','caja','L'] %}<option value="{{ u }}" {% if u==listing.unit %}selected{% endif %}>{{ u }}</option>{% endfor %}</select>
+<label>Precio CUP</label><input name="price" type="number" min="0" step="0.01" value="{{ listing.price }}" required>
+<label>Municipio</label><select name="municipality">{% for m in MUNICIPIOS %}<option value="{{ m }}" {% if m==listing.municipality %}selected{% endif %}>{{ m }}</option>{% endfor %}</select>
+<label>Zona de venta</label><select name="coverage">{% for v in ['municipio','cercanos','provincia'] %}<option value="{{ v }}" {% if v==listing.coverage %}selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+<label>Descripción</label><textarea name="description" maxlength="2000">{{ listing.description or '' }}</textarea>
+<button class="btn primary" type="submit">Guardar cambios</button>
+</form></div></div>
 {% endblock %}

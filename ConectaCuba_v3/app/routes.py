@@ -330,6 +330,51 @@ def register_routes(app):
    db.session.commit(); flash('Producto publicado correctamente.','success'); return redirect(url_for('dashboard'))
   return render_template('publish.html')
 
+ def can_edit_listing(item):
+  return current_user.is_authenticated and (current_user.is_admin or (current_user.approved and current_user.role in SELLER_ROLES and item.owner_id==current_user.id))
+
+ @app.route('/listing/<int:listing_id>/edit',methods=['GET','POST'])
+ @login_required
+ def edit_listing(listing_id):
+  item=db.session.get(Listing,listing_id)
+  if not item: abort(404)
+  if not can_edit_listing(item): abort(403)
+  if request.method=='POST':
+   d=request.form
+   if d.get('product') not in PRODUCTOS or d.get('municipality') not in MUNICIPIOS or d.get('unit') not in ('lb','kg','unidad','saco','caja','L') or d.get('coverage') not in ('municipio','cercanos','provincia'):
+    abort(400,description='Datos de la publicación no válidos.')
+   try:
+    quantity=float(d.get('quantity',''))
+    price=float(d.get('price',''))
+   except (ValueError,TypeError): abort(400,description='Cantidad o precio no válido.')
+   import math
+   if not (math.isfinite(quantity) and math.isfinite(price) and 0<quantity<1e12 and 0<=price<1e12):
+    abort(400,description='Cantidad o precio fuera de rango.')
+   custom=(d.get('custom_product') or '').strip()
+   if d['product']=='Otro' and (not custom or len(custom)>120):
+    abort(400,description='Especifica el nombre del producto.')
+   description=(d.get('description') or '').strip()
+   if len(description)>2000: abort(400)
+   item.product=d['product']; item.custom_product=custom if d['product']=='Otro' else None
+   item.quantity=quantity; item.price=price; item.unit=d['unit']; item.municipality=d['municipality']; item.coverage=d['coverage']; item.description=description
+   db.session.commit()
+   flash('Publicación actualizada correctamente.','success')
+   return redirect(url_for('admin_products_photos') if current_user.is_admin else url_for('dashboard'))
+  return render_template('edit_listing.html',listing=item)
+
+ @app.route('/listing/<int:listing_id>/moderate',methods=['POST'])
+ @login_required
+ def moderate_listing(listing_id):
+  item=db.session.get(Listing,listing_id)
+  if not item: abort(404)
+  if not can_edit_listing(item): abort(403)
+  action=request.form.get('action')
+  if action not in ('deactivate','reactivate'): abort(400)
+  item.active=(action=='reactivate')
+  db.session.commit()
+  flash('Publicación reactivada.' if item.active else 'Publicación retirada del mercado.','success')
+  return redirect(url_for('admin_products_photos') if current_user.is_admin else url_for('dashboard'))
+
  @app.route('/matches/<int:listing_id>')
  @login_required
  @approved_required
@@ -419,6 +464,20 @@ def register_routes(app):
   notes=Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).all()
   for n in notes: n.read=True
   db.session.commit(); return render_template('notifications.html',notes=notes)
+
+ @app.route('/notifications/<int:notification_id>/open')
+ @login_required
+ def open_notification(notification_id):
+  n=db.session.get(Notification,notification_id)
+  if not n or n.user_id!=current_user.id: abort(404)
+  n.read=True
+  db.session.commit()
+  if n.listing_id:
+   item=db.session.get(Listing,n.listing_id)
+   if item and item.active and item.owner.approved:
+    return redirect(url_for('detail',listing_id=item.id))
+  flash('La publicación relacionada ya no está disponible.' if n.listing_id else 'Notificación leída.','info')
+  return redirect(url_for('notifications'))
 
  @app.route('/chat/<int:user_id>',methods=['GET','POST'])
  @login_required

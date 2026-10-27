@@ -1,5 +1,5 @@
 {% extends 'base.html' %}{% block content %}
-<div class="container"><h2>Notificaciones</h2><div class="list">
+<div class="container"><h2>Notificaciones</h2><p><a class="btn primary" href="{{ url_for('messages_inbox') }}">Mis conversaciones y mensajes</a></p><div class="list">
 {% for n in notes %}
 <a class="row" href="{{url_for('open_notification',notification_id=n.id)}}" style="text-decoration:none;color:inherit">
 <div>
@@ -9,7 +9,7 @@
   <div style="margin-top:6px">{{n.message}}</div>
   <div class="muted">{{n.created_at.strftime('%d/%m/%Y %H:%M')}}</div>
 </div>
-<div>{% if n.context_listing_a_id and n.context_listing_b_id %}Abrir conversación →{% elif n.listing_id %}Ver publicación →{% else %}Abrir →{% endif %}</div>
+<div>{% if n.context_listing_a_id and n.context_listing_b_id %}Abrir conversación →{% elif n.message.startswith('Nuevo mensaje de ') %}Ver conversaciones →{% elif n.listing_id %}Ver publicación →{% else %}Abrir →{% endif %}</div>
 </a>
 {% else %}<div class="card">No hay notificaciones.</div>{% endfor %}
 </div></div>

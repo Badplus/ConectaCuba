@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block title %}Mis conversaciones | Mercado BETO Plus{% endblock %}
+{% block content %}
+<div class="container"><h2>Mis conversaciones</h2><div class="list">
+{% for person in contacts %}<a class="row" href="{{ url_for('chat', user_id=person.id) }}"><span>{{ person.full_name }}</span><span>Ver chat y responder</span></a>
+{% else %}<div class="card">Todavía no tienes conversaciones.</div>{% endfor %}
+</div></div>
+{% endblock %}

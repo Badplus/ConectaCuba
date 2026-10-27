@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 from urllib.parse import urlparse
 
 from flask import current_app
@@ -20,13 +21,18 @@ def send_push(user_id, title, body, url="/notifications"):
     payload = json.dumps({"title": title, "body": body[:200], "url": url}, ensure_ascii=False)
     for subscription in PushSubscription.query.filter_by(user_id=user_id).all():
         try:
-            webpush(
+            # pywebpush expects a VAPID key file path (or its encoded key format),
+            # not the literal PEM content stored in Render's environment variable.
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".pem", encoding="utf-8") as key_file:
+                key_file.write(private_key)
+                key_file.flush()
+                webpush(
                 subscription_info={"endpoint": subscription.endpoint, "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth}},
                 data=payload,
-                vapid_private_key=private_key,
+                vapid_private_key=key_file.name,
                 vapid_claims={"sub": subject},
                 timeout=4,
-            )
+                )
         except WebPushException as exc:
             status = getattr(getattr(exc, "response", None), "status_code", None)
             if status in (404, 410):

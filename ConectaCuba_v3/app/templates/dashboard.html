@@ -31,7 +31,16 @@
               · {{ x.municipality }} · {{ 'Activa' if x.active else 'Inactiva' }}
             </div>
           </div>
-          <div><a class="btn secondary" href="{{ url_for('detail', listing_id=x.id) }}">Ver publicación</a>{% if can_manage_photo(x) %} <a class="btn secondary" href="{{ url_for('upload_product_photo', listing_id=x.id) }}">Foto</a>{% endif %}</div>
+          <div>
+            <a class="btn secondary" href="{{ url_for('detail', listing_id=x.id) }}">Ver publicación</a>
+            <a class="btn secondary" href="{{ url_for('edit_listing', listing_id=x.id) }}">Editar</a>
+            {% if can_manage_photo(x) %}<a class="btn secondary" href="{{ url_for('upload_product_photo', listing_id=x.id) }}">Foto</a>{% endif %}
+            <form method="post" action="{{ url_for('moderate_listing', listing_id=x.id) }}" style="display:inline" onsubmit="return confirm('{{ '¿Retirar esta publicación del mercado?' if x.active else '¿Reactivar esta publicación?' }}')">
+              <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="{{ 'deactivate' if x.active else 'reactivate' }}">
+              <button class="btn secondary" type="submit">{{ 'Retirar' if x.active else 'Reactivar' }}</button>
+            </form>
+          </div>
         </div>
       {% else %}
         <div class="card">Todavía no has publicado productos. Puedes comenzar con el botón «Publicar producto en venta».</div>

@@ -46,6 +46,7 @@ def valid_subscription(data):
     if not isinstance(endpoint, str) or len(endpoint) > 2048 or not isinstance(keys, dict):
         return False
     parsed = urlparse(endpoint)
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+    allowed = ("fcm.googleapis.com", "updates.push.services.mozilla.com", "web.push.apple.com", "wns.windows.com", "push.services.mozilla.com")
+    if parsed.scheme != "https" or parsed.hostname not in allowed or parsed.username or parsed.password:
         return False
     return all(isinstance(keys.get(k), str) and 20 <= len(keys[k]) <= 512 for k in ("p256dh", "auth"))

@@ -450,6 +450,13 @@ def register_routes(app):
   if not item or not item.active or not item.owner.approved: abort(404)
   return render_template('detail.html',listing=item)
 
+ @app.route('/sw.js')
+ def service_worker():
+  response=current_app.send_static_file('sw.js')
+  response.headers['Cache-Control']='no-cache'
+  response.headers['Service-Worker-Allowed']='/'
+  return response
+
  @app.route('/api/push/public-key')
  @login_required
  def push_public_key():

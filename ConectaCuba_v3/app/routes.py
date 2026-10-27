@@ -479,6 +479,16 @@ def register_routes(app):
   flash('La publicación relacionada ya no está disponible.' if n.listing_id else 'Notificación leída.','info')
   return redirect(url_for('notifications'))
 
+ @app.route('/messages')
+ @login_required
+ @approved_required
+ def messages_inbox():
+  sent=db.session.query(Message.receiver_id).filter(Message.sender_id==current_user.id)
+  received=db.session.query(Message.sender_id).filter(Message.receiver_id==current_user.id)
+  user_ids={row[0] for row in sent.union(received).all()}
+  contacts=User.query.filter(User.id.in_(user_ids),User.approved==True).order_by(User.full_name).all() if user_ids else []
+  return render_template('messages_inbox.html',contacts=contacts)
+
  @app.route('/chat/<int:user_id>',methods=['GET','POST'])
  @login_required
  @approved_required

@@ -457,6 +457,27 @@ def register_routes(app):
   response.headers['Cache-Control']='no-store'
   return response
 
+ @app.route('/api/notifications/list')
+ @login_required
+ def notifications_list_api():
+  notes=Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).limit(100).all()
+  payload=[{'id':n.id,'message':n.message,'date':n.created_at.strftime('%d/%m/%Y %H:%M') if n.created_at else '', 'context':bool(n.context_listing_a_id and n.context_listing_b_id),'listing':bool(n.listing_id),'chat':n.message.startswith('Nuevo mensaje de ')} for n in notes]
+  response=current_app.response_class(response=json.dumps({'notifications':payload}),mimetype='application/json')
+  response.headers['Cache-Control']='no-store'
+  return response
+
+ @app.route('/api/chat/<int:user_id>/messages')
+ @login_required
+ @approved_required
+ def chat_messages_api(user_id):
+  other=db.session.get(User,user_id)
+  if not other or not other.approved or other.id==current_user.id: abort(404)
+  msgs=Message.query.filter(or_(and_(Message.sender_id==current_user.id,Message.receiver_id==other.id),and_(Message.sender_id==other.id,Message.receiver_id==current_user.id))).order_by(Message.created_at.asc()).all()
+  payload=[{'id':m.id,'mine':m.sender_id==current_user.id,'body':m.body,'date':m.created_at.strftime('%d/%m/%Y %H:%M') if m.created_at else ''} for m in msgs]
+  response=current_app.response_class(response=json.dumps({'messages':payload}),mimetype='application/json')
+  response.headers['Cache-Control']='no-store'
+  return response
+
  @app.route('/notifications')
  @login_required
  def notifications():

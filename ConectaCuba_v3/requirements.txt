@@ -7,3 +7,4 @@ Pillow==11.3.0
 
 pywebpush==2.0.3
 cryptography>=43,<47
+reportlab==4.4.4

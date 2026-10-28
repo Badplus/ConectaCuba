@@ -681,6 +681,95 @@ def register_routes(app):
                          owner_id=owner_id,owners=User.query.filter_by(role='admin_bodega').order_by(User.full_name).all() if current_user.is_admin else [],
                          is_general_admin=current_user.is_admin)
 
+
+ def inventory_report_data(owner_id):
+  # Aggregate the complete sales history, not only the last 100 movements.
+  products=InventoryProduct.query.filter_by(owner_id=owner_id).order_by(InventoryProduct.name,InventoryProduct.id).all()
+  sales=InventoryMovement.query.filter_by(owner_id=owner_id,kind='sale').all()
+  totals={}
+  for movement in sales:
+   bucket=totals.setdefault(movement.product_id,{'sold':Decimal('0'),'revenue':Decimal('0'),'cost':Decimal('0')})
+   bucket['sold']+=movement.quantity
+   bucket['revenue']+=movement.quantity*movement.unit_price
+   bucket['cost']+=movement.quantity*movement.unit_cost
+  rows=[]
+  for product in products:
+   item=totals.get(product.id,{'sold':Decimal('0'),'revenue':Decimal('0'),'cost':Decimal('0')})
+   rows.append({'name':product.name,'unit':product.unit,'stock':product.quantity,
+                'stock_value':product.quantity*product.average_cost,'sold':item['sold'],
+                'revenue':item['revenue'],'cost':item['cost'],
+                'profit':item['revenue']-item['cost']})
+  summary={key:sum((row[key] for row in rows),Decimal('0')) for key in ('stock_value','revenue','cost','profit')}
+  return rows,summary
+
+ @app.route('/inventory/report')
+ @login_required
+ def inventory_report():
+  requested_owner=int(request.args['owner']) if request.args.get('owner','').isdigit() else None
+  if current_user.is_admin and requested_owner is None:
+   abort(400,description='Selecciona una bodega.')
+  owner_id=inventory_owner(requested_owner)
+  owner=db.session.get(User,owner_id)
+  rows,summary=inventory_report_data(owner_id)
+  return render_template('inventory_report.html',rows=rows,summary=summary,owner=owner,
+                         owner_id=owner_id,is_general_admin=current_user.is_admin)
+
+ @app.route('/inventory/report.pdf')
+ @login_required
+ def inventory_report_pdf():
+  requested_owner=int(request.args['owner']) if request.args.get('owner','').isdigit() else None
+  if current_user.is_admin and requested_owner is None:
+   abort(400,description='Selecciona una bodega.')
+  owner_id=inventory_owner(requested_owner)
+  owner=db.session.get(User,owner_id)
+  rows,summary=inventory_report_data(owner_id)
+  from io import BytesIO
+  from flask import send_file
+  from reportlab.lib import colors
+  from reportlab.lib.pagesizes import A4,landscape
+  from reportlab.lib.styles import getSampleStyleSheet
+  from reportlab.lib.units import mm
+  from reportlab.platypus import SimpleDocTemplate,Paragraph,Spacer,LongTable,TableStyle
+  from reportlab.pdfbase import pdfmetrics
+  from reportlab.pdfbase.ttfonts import TTFont
+  from xml.sax.saxutils import escape
+  import os
+  buffer=BytesIO()
+  font='Helvetica'
+  regular='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+  if os.path.isfile(regular):
+   if 'InventoryDejaVu' not in pdfmetrics.getRegisteredFontNames():
+    pdfmetrics.registerFont(TTFont('InventoryDejaVu',regular))
+   font='InventoryDejaVu'
+  doc=SimpleDocTemplate(buffer,pagesize=landscape(A4),rightMargin=13*mm,leftMargin=13*mm,
+                        topMargin=15*mm,bottomMargin=15*mm)
+  styles=getSampleStyleSheet()
+  styles['Title'].fontName=font
+  styles['Normal'].fontName=font
+  def money(value): return f'{value:,.2f}'
+  cells=[['Producto','Unidad','Existencia','Valor stock CUP','Vendido','Costo vendido CUP','Ingreso CUP','Ganancia CUP']]
+  for row in rows:
+   cells.append([Paragraph(escape(row['name']),styles['Normal']),row['unit'],str(row['stock']),
+                 money(row['stock_value']),str(row['sold']),money(row['cost']),money(row['revenue']),money(row['profit'])])
+  cells.append(['TOTAL','','',money(summary['stock_value']),'',money(summary['cost']),money(summary['revenue']),money(summary['profit'])])
+  table=LongTable(cells,colWidths=[63*mm,20*mm,23*mm,33*mm,23*mm,33*mm,38*mm,35*mm],repeatRows=1)
+  table.setStyle(TableStyle([('FONTNAME',(0,0),(-1,-1),font),('FONTSIZE',(0,0),(-1,-1),8),
+    ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#E6EDF5')),
+    ('BACKGROUND',(0,-1),(-1,-1),colors.HexColor('#E6EDF5')),
+    ('GRID',(0,0),(-1,-1),0.3,colors.HexColor('#D5DDE7')),
+    ('VALIGN',(0,0),(-1,-1),'MIDDLE'),('TOPPADDING',(0,0),(-1,-1),6),
+    ('BOTTOMPADDING',(0,0),(-1,-1),6)]))
+  story=[Paragraph('Mercado BETO Plus - Informe de inventario',styles['Title']),
+         Paragraph('Bodega: '+escape(owner.full_name),styles['Normal']),
+         Paragraph('Fecha de emisión: '+datetime.utcnow().strftime('%d/%m/%Y %H:%M')+' UTC',styles['Normal']),
+         Spacer(1,8*mm),table,Spacer(1,5*mm),
+         Paragraph('Ganancia bruta = ingresos de ventas - costo de mercancía vendida. No incluye gastos.',styles['Normal']),
+         Paragraph('Cifras acumuladas desde el inicio del registro; existencias a la fecha de emisión.',styles['Normal'])]
+  doc.build(story)
+  buffer.seek(0)
+  return send_file(buffer,mimetype='application/pdf',as_attachment=True,
+                   download_name='inventario_bodega_'+str(owner_id)+'.pdf')
+
  @app.route('/inventory/product',methods=['POST'])
  @login_required
  def inventory_create_product():

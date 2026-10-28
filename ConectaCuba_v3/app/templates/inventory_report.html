@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Informe de inventario — Mercado BETO Plus{% endblock %}
+{% block content %}
+<div class="container">
+<div class="card">
+<h2>Informe de inventario y ganancias</h2>
+<p><b>Bodega:</b> {{ owner.full_name }}</p>
+<p class="muted">Resultados acumulados desde el inicio del registro. Existencias actuales.</p>
+<a class="btn secondary" href="{{ url_for('inventory', owner=owner_id) if is_general_admin else url_for('inventory') }}">Volver al inventario</a>
+<a class="btn primary" href="{{ url_for('inventory_report_pdf', owner=owner_id) if is_general_admin else url_for('inventory_report_pdf') }}">Descargar tabla en PDF</a>
+</div>
+<div class="card" style="overflow-x:auto">
+<h3>Ganancia por producto</h3>
+<table>
+<thead><tr><th>Producto</th><th>Unidad</th><th>Existencias</th><th>Valor existencias (CUP)</th><th>Cantidad vendida</th><th>Costo vendido (CUP)</th><th>Ingresos (CUP)</th><th>Ganancia bruta (CUP)</th></tr></thead>
+<tbody>
+{% for row in rows %}
+<tr><td>{{ row.name }}</td><td>{{ row.unit }}</td><td>{{ row.stock }}</td>
+<td>{{ '%.2f'|format(row.stock_value) }}</td><td>{{ row.sold }}</td>
+<td>{{ '%.2f'|format(row.cost) }}</td><td>{{ '%.2f'|format(row.revenue) }}</td>
+<td><strong>{{ '%.2f'|format(row.profit) }}</strong></td></tr>
+{% else %}<tr><td colspan="8">Todavía no hay productos registrados.</td></tr>{% endfor %}
+</tbody>
+<tfoot><tr><th>TOTAL</th><th>—</th><th>—</th><th>{{ '%.2f'|format(summary.stock_value) }}</th><th>—</th><th>{{ '%.2f'|format(summary.cost) }}</th><th>{{ '%.2f'|format(summary.revenue) }}</th><th>{{ '%.2f'|format(summary.profit) }}</th></tr></tfoot>
+</table>
+</div>
+<p class="muted">Ganancia bruta = ingresos por ventas − costo de mercancía vendida. No incluye transporte, impuestos ni otros gastos.</p>
+</div>
+{% endblock %}

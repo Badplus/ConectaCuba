@@ -27,6 +27,7 @@
 {% if is_general_admin %}<input type="hidden" name="owner_id" value="{{ owner_id }}">{% endif %}
 <label>Nombre</label><input name="name" maxlength="120" required>
 <label>Unidad</label><select name="unit">{% for u in ['lb','kg','unidad','saco','caja','L'] %}<option value="{{ u }}">{{ u }}</option>{% endfor %}</select>
+<label>Precio de costo unitario (CUP)</label><input type="number" name="unit_cost" min="0" step="0.0001" required>
 <label>Precio de venta sugerido (CUP)</label><input type="number" name="sale_price" min="0" step="0.01" required>
 <button class="btn primary" type="submit">Crear producto</button>
 </form>
@@ -35,7 +36,7 @@
 {% for p in products %}
 <div class="card">
 <h3>{{ p.name }}</h3>
-<p>Existencias: <b>{{ p.quantity }} {{ p.unit }}</b> · Costo promedio: {{ p.average_cost }} CUP · Precio sugerido: {{ p.sale_price }} CUP</p>
+<p>Existencias: <b>{{ p.quantity }} {{ p.unit }}</b> · Costo promedio: {{ p.average_cost }} CUP · Precio de venta: {{ p.sale_price }} CUP · Ganancia unitaria estimada: {{ "%.2f"|format(p.sale_price - p.average_cost) }} CUP</p>
 <div style="display:flex;gap:20px;flex-wrap:wrap">
 <form method="post" action="{{ url_for('inventory_record_movement',product_id=p.id) }}">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">

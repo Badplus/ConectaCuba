@@ -21,7 +21,7 @@
 <p class="muted">La ganancia bruta no incluye transporte, impuestos ni otros gastos.</p>
 </div>
 <div class="card">
-<h3>Crear producto</h3>
+<details><summary style="cursor:pointer;font-weight:600">+ Crear producto nuevo</summary><div style="padding-top:12px">
 <form method="post" action="{{ url_for('inventory_create_product') }}">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
 {% if is_general_admin %}<input type="hidden" name="owner_id" value="{{ owner_id }}">{% endif %}
@@ -31,11 +31,17 @@
 <label>Precio de venta sugerido (CUP)</label><input type="number" name="sale_price" min="0" step="0.01" required>
 <button class="btn primary" type="submit">Crear producto</button>
 </form>
+</div></details>
 </div>
-<h3>Existencias y movimientos</h3>
+<h3>Selecciona un producto</h3>
+<p class="muted">Toca el nombre para consultar sus precios y registrar entradas o ventas.</p>
 {% for p in products %}
 <div class="card">
-<h3>{{ p.name }}</h3>
+<details name="inventory-product">
+<summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+<strong>{{ p.name }}</strong><span>{{ p.quantity }} {{ p.unit }} disponibles · Venta: {{ p.sale_price }} CUP</span>
+</summary>
+<div style="padding-top:14px">
 <p>Existencias: <b>{{ p.quantity }} {{ p.unit }}</b> · Costo promedio: {{ p.average_cost }} CUP · Precio de venta: {{ p.sale_price }} CUP · Ganancia unitaria estimada: {{ "%.2f"|format(p.sale_price - p.average_cost) }} CUP</p>
 <div style="display:flex;gap:20px;flex-wrap:wrap">
 <form method="post" action="{{ url_for('inventory_record_movement',product_id=p.id) }}">
@@ -56,6 +62,8 @@
 <button class="btn secondary" type="submit">Registrar venta</button>
 </form>
 </div>
+</div>
+</details>
 </div>
 {% else %}
 <div class="card">Todavía no hay productos en este inventario.</div>

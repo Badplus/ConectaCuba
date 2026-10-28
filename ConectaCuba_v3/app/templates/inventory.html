@@ -17,6 +17,7 @@ function filterInventoryProducts(value) {
 {% block content %}
 <div class="container">
 <h2>Inventario y ganancias</h2>
+<p><a class="btn primary" href="{{ url_for('inventory_report', owner=owner_id) if is_general_admin else url_for('inventory_report') }}">Ver tabla de inventario y ganancias por producto</a> <a class="btn secondary" href="{{ url_for('inventory_report_pdf', owner=owner_id) if is_general_admin else url_for('inventory_report_pdf') }}">Descargar PDF</a></p>
 {% if is_general_admin %}
 <div class="card"><h3>Supervisión general</h3>
 <form method="get" action="{{ url_for('inventory') }}">

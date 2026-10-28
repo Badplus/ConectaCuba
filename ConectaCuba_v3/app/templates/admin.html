@@ -20,9 +20,16 @@
 </form>
 </div>
 
-<div class="card" style="overflow:auto">
+<div class="card" style="overflow-x:auto;padding:12px">
 <h3>Usuarios</h3>
-<table>
+<style>
+.admin-users-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:auto}
+.admin-users-table th,.admin-users-table td{padding:6px 5px;vertical-align:middle;white-space:nowrap}
+.admin-users-table .role-select{width:135px;max-width:135px;padding:5px;font-size:12px}
+.admin-users-table .btn{padding:5px 7px;font-size:11px;white-space:nowrap}
+.admin-users-table form{margin:0}
+</style>
+<table class="admin-users-table">
 <tr>
 <th>Nombre</th>
 <th>Teléfono</th>
@@ -33,48 +40,13 @@
 <th>Acceso</th>
 <th>Acción</th>
 <th>Inventario</th>
-<th>Cambiar rol</th>
-<th>Eliminar cuenta</th>
+<th>Eliminar</th>
 </tr>
 
 {% for u in users %}
 <tr>
 <td>{{u.full_name}}</td>
 <td>{{u.phone}}</td>
-<td>{{u.role}}</td>
-<td>{{u.province}}</td>
-<td>{{u.municipality}}</td>
-<td>{{'ACTIVA' if u.approved else 'PENDIENTE'}}</td>
-<td>
-{% if u.is_admin %}
-<span class="pill">ADMINISTRADOR</span>
-{% else %}
-Usuario
-{% endif %}
-</td>
-<td>
-{% if u.is_admin %}
-<span class="muted">Protegida</span>
-{% else %}
-<form method="post" action="{{url_for('admin_toggle',user_id=u.id)}}">
-<input type="hidden" name="_csrf" value="{{csrf_token()}}">
-<button class="btn {{'danger' if u.approved else 'primary'}}">
-{{'Desactivar' if u.approved else 'Activar'}}
-</button>
-</form>
-{% endif %}
-</td>
-<td>
-{% if u.role == 'admin_bodega' and not u.is_admin %}
-  {{ 'Autorizado' if u.id in inventory_access_ids else 'Sin acceso' }}
-  {% if current_user.is_authenticated and current_user.is_admin %}
-  <form method="post" action="{{ url_for('admin_inventory_access_toggle', user_id=u.id) }}">
-    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-    <button class="btn secondary" type="submit" {% if not u.approved and u.id not in inventory_access_ids %}disabled{% endif %}>{{ 'Retirar permiso' if u.id in inventory_access_ids else 'Autorizar inventario' }}</button>
-  </form>
-  {% endif %}
-{% else %}—{% endif %}
-</td>
 <td>
 {% if not u.is_admin and current_user.is_authenticated and current_user.is_admin %}
 <form method="post" action="{{ url_for('admin_change_user_role',user_id=u.id) }}">

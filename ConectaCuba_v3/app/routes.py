@@ -608,6 +608,67 @@ def register_routes(app):
   db.session.commit()
   return redirect(url_for('admin'))
 
+ @app.route('/admin/user/<int:user_id>/role',methods=['POST'])
+ @login_required
+ def admin_change_user_role(user_id):
+  if not current_user.is_admin:
+   abort(403)
+  user=db.session.get(User,user_id)
+  if not user or user.is_admin or user.id==current_user.id:
+   abort(403)
+  role=request.form.get('role','')
+  if role not in REGISTRATION_ROLES:
+   abort(400,description='Rol no válido.')
+  if user.role==role:
+   return redirect(url_for('admin'))
+  # Financial history remains tied to its owner: don't demote accounts with movements.
+  if user.role=='admin_bodega' and role!='admin_bodega' and InventoryMovement.query.filter_by(owner_id=user.id).first():
+   flash('No se puede cambiar este rol: la bodega tiene movimientos financieros. Conserva su historial y desactiva la cuenta si es necesario.','danger')
+   return redirect(url_for('admin'))
+  if role!='admin_bodega':
+   grant=db.session.get(InventoryAccess,user.id)
+   if grant:
+    db.session.delete(grant)
+  old_role=user.role
+  user.role=role
+  db.session.add(Notification(user_id=user.id,message='Tu rol en Mercado BETO Plus cambió de '+old_role+' a '+role+'.'))
+  db.session.commit()
+  flash('Rol actualizado correctamente.','success')
+  return redirect(url_for('admin'))
+
+ @app.route('/admin/user/<int:user_id>/delete',methods=['POST'])
+ @login_required
+ def admin_delete_user(user_id):
+  if not current_user.is_admin:
+   abort(403)
+  user=db.session.get(User,user_id)
+  if not user or user.is_admin or user.id==current_user.id:
+   abort(403)
+  # Never destroy accounting history or orphan an inventory movement.
+  if (InventoryMovement.query.filter(or_(InventoryMovement.owner_id==user_id,
+                                         InventoryMovement.actor_id==user_id)).first()):
+   flash('No se puede eliminar esta cuenta porque tiene movimientos de inventario. Puedes desactivarla para impedir su acceso.','danger')
+   return redirect(url_for('admin'))
+  # Delete dependent records within one database transaction.
+  InventoryAccess.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+  # A grant issued by this user should not exist for non-general-admins, but guard it.
+  if InventoryAccess.query.filter_by(granted_by=user_id).first():
+   flash('No se puede eliminar: existen permisos de inventario concedidos por esta cuenta.','danger')
+   db.session.rollback()
+   return redirect(url_for('admin'))
+  InventoryProduct.query.filter_by(owner_id=user_id).delete(synchronize_session=False)
+  PushSubscription.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+  PasswordResetRequest.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+  Notification.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+  Message.query.filter(or_(Message.sender_id==user_id,Message.receiver_id==user_id)).delete(synchronize_session=False)
+  for listing in Listing.query.filter_by(owner_id=user_id).all():
+   db.session.delete(listing)
+  db.session.flush()
+  db.session.delete(user)
+  db.session.commit()
+  flash('Cuenta eliminada y acceso revocado. También se eliminaron sus publicaciones y conversaciones.','success')
+  return redirect(url_for('admin'))
+
  @app.route('/admin/user/<int:user_id>/toggle',methods=['POST'])
  @admin_required
  def admin_toggle(user_id):

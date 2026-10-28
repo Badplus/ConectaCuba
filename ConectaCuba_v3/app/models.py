@@ -138,3 +138,35 @@ class PushSubscription(db.Model):
     p256dh = db.Column(db.Text, nullable=False)
     auth = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InventoryAccess(db.Model):
+    __tablename__ = "inventory_access"
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), primary_key=True)
+    granted_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    granted_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class InventoryProduct(db.Model):
+    __tablename__ = "inventory_product"
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    unit = db.Column(db.String(20), nullable=False)
+    quantity = db.Column(db.Numeric(16, 3), nullable=False, server_default="0")
+    average_cost = db.Column(db.Numeric(16, 4), nullable=False, server_default="0")
+    sale_price = db.Column(db.Numeric(16, 2), nullable=False, server_default="0")
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class InventoryMovement(db.Model):
+    __tablename__ = "inventory_movement"
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("inventory_product.id"), nullable=False, index=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    actor_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    kind = db.Column(db.String(16), nullable=False)
+    quantity = db.Column(db.Numeric(16, 3), nullable=False)
+    unit_cost = db.Column(db.Numeric(16, 4), nullable=False)
+    unit_price = db.Column(db.Numeric(16, 2))
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)

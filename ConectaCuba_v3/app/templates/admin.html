@@ -31,6 +31,7 @@
 <th>Estado</th>
 <th>Acceso</th>
 <th>Acción</th>
+<th>Inventario</th>
 </tr>
 
 {% for u in users %}
@@ -59,6 +60,17 @@ Usuario
 </button>
 </form>
 {% endif %}
+</td>
+<td>
+{% if u.role == 'admin_bodega' and not u.is_admin %}
+  {{ 'Autorizado' if u.id in inventory_access_ids else 'Sin acceso' }}
+  {% if current_user.is_authenticated and current_user.is_admin %}
+  <form method="post" action="{{ url_for('admin_inventory_access_toggle', user_id=u.id) }}">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <button class="btn secondary" type="submit" {% if not u.approved and u.id not in inventory_access_ids %}disabled{% endif %}>{{ 'Retirar permiso' if u.id in inventory_access_ids else 'Autorizar inventario' }}</button>
+  </form>
+  {% endif %}
+{% else %}—{% endif %}
 </td>
 </tr>
 {% endfor %}

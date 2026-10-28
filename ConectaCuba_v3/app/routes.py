@@ -16,7 +16,7 @@ from flask import render_template,request,redirect,url_for,flash,session,current
 from flask_login import login_user,logout_user,login_required,current_user
 from sqlalchemy import or_,and_
 from . import db,MUNICIPIOS,PRODUCTOS
-from .models import User,Listing,Notification,Message,Setting,PasswordResetRequest,PushSubscription
+from .models import User,Listing,Notification,Message,Setting,PasswordResetRequest,PushSubscription,InventoryAccess
 from .push import send_push,push_configured,valid_subscription
 
 def approved_required(fn):
@@ -585,7 +585,27 @@ def register_routes(app):
 
  @app.route('/admin')
  @admin_required
- def admin(): return render_template('admin.html',users=User.query.order_by(User.created_at.desc()).all(),setting=Setting.query.first())
+ def admin(): return render_template('admin.html',users=User.query.order_by(User.created_at.desc()).all(),setting=Setting.query.first(),inventory_access_ids={p.user_id for p in InventoryAccess.query.all()})
+
+ @app.route('/admin/inventory-access/<int:user_id>/toggle', methods=['POST'])
+ @login_required
+ def admin_inventory_access_toggle(user_id):
+  if not current_user.is_admin:
+   abort(403)
+  user=db.session.get(User,user_id)
+  if not user or user.is_admin or user.role!='admin_bodega':
+   abort(404)
+  grant=db.session.get(InventoryAccess,user_id)
+  if grant:
+   db.session.delete(grant)
+   flash('Permiso de inventario retirado.','success')
+  else:
+   if not user.approved:
+    abort(400,description='Activa primero al administrador de bodega.')
+   db.session.add(InventoryAccess(user_id=user_id,granted_by=current_user.id))
+   flash('Permiso de inventario concedido.','success')
+  db.session.commit()
+  return redirect(url_for('admin'))
 
  @app.route('/admin/user/<int:user_id>/toggle',methods=['POST'])
  @admin_required

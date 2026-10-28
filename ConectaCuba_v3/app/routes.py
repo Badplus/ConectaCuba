@@ -692,7 +692,8 @@ def register_routes(app):
   if InventoryProduct.query.filter_by(owner_id=owner_id,name=name,unit=unit).first():
    abort(400,description='Este producto ya existe en el inventario.')
   price=inventory_decimal('sale_price',2)
-  db.session.add(InventoryProduct(owner_id=owner_id,name=name,unit=unit,sale_price=price))
+  cost=inventory_decimal('unit_cost',4)
+  db.session.add(InventoryProduct(owner_id=owner_id,name=name,unit=unit,sale_price=price,average_cost=cost))
   db.session.commit()
   flash('Producto incorporado al inventario.','success')
   return redirect(url_for('inventory',owner=owner_id) if current_user.is_admin else url_for('inventory'))

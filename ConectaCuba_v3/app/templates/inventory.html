@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block title %}Inventario — Mercado BETO Plus{% endblock %}
+{% block content %}
+<div class="container">
+<h2>Inventario y ganancias</h2>
+{% if is_general_admin %}
+<div class="card"><h3>Supervisión general</h3>
+<form method="get" action="{{ url_for('inventory') }}">
+<label>Bodega</label>
+<select name="owner" required>
+{% for u in owners %}<option value="{{ u.id }}" {% if u.id == owner_id %}selected{% endif %}>{{ u.full_name }} — {{ u.municipality }}</option>{% endfor %}
+</select>
+<button class="btn primary">Ver inventario</button>
+</form></div>
+{% endif %}
+<div class="card">
+<p><b>Valor de existencias:</b> {{ '%.2f'|format(summary.stock_value) }} CUP</p>
+<p><b>Ingresos por ventas:</b> {{ '%.2f'|format(summary.revenue) }} CUP</p>
+<p><b>Costo de mercancía vendida:</b> {{ '%.2f'|format(summary.cost_sold) }} CUP</p>
+<p><b>Ganancia bruta acumulada:</b> {{ '%.2f'|format(summary.gross_profit) }} CUP</p>
+<p class="muted">La ganancia bruta no incluye transporte, impuestos ni otros gastos.</p>
+</div>
+<div class="card">
+<h3>Crear producto</h3>
+<form method="post" action="{{ url_for('inventory_create_product') }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+{% if is_general_admin %}<input type="hidden" name="owner_id" value="{{ owner_id }}">{% endif %}
+<label>Nombre</label><input name="name" maxlength="120" required>
+<label>Unidad</label><select name="unit">{% for u in ['lb','kg','unidad','saco','caja','L'] %}<option value="{{ u }}">{{ u }}</option>{% endfor %}</select>
+<label>Precio de venta sugerido (CUP)</label><input type="number" name="sale_price" min="0" step="0.01" required>
+<button class="btn primary" type="submit">Crear producto</button>
+</form>
+</div>
+<h3>Existencias y movimientos</h3>
+{% for p in products %}
+<div class="card">
+<h3>{{ p.name }}</h3>
+<p>Existencias: <b>{{ p.quantity }} {{ p.unit }}</b> · Costo promedio: {{ p.average_cost }} CUP · Precio sugerido: {{ p.sale_price }} CUP</p>
+<div style="display:flex;gap:20px;flex-wrap:wrap">
+<form method="post" action="{{ url_for('inventory_record_movement',product_id=p.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<input type="hidden" name="kind" value="entry">
+<h4>Entrada</h4>
+<label>Cantidad ({{ p.unit }})</label><input type="number" min="0.001" step="0.001" name="quantity" required>
+<label>Costo unitario (CUP)</label><input type="number" min="0" step="0.0001" name="unit_cost" required>
+<label>Precio de venta sugerido (CUP)</label><input type="number" min="0" step="0.01" name="unit_price" value="{{ p.sale_price }}" required>
+<button class="btn primary" type="submit">Registrar entrada</button>
+</form>
+<form method="post" action="{{ url_for('inventory_record_movement',product_id=p.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<input type="hidden" name="kind" value="sale">
+<h4>Venta</h4>
+<label>Cantidad ({{ p.unit }})</label><input type="number" min="0.001" step="0.001" name="quantity" required>
+<label>Precio unitario de venta (CUP)</label><input type="number" min="0" step="0.01" name="unit_price" value="{{ p.sale_price }}" required>
+<button class="btn secondary" type="submit">Registrar venta</button>
+</form>
+</div>
+</div>
+{% else %}
+<div class="card">Todavía no hay productos en este inventario.</div>
+{% endfor %}
+<h3>Últimos movimientos</h3>
+<div class="card" style="overflow:auto">
+<table>
+<tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cantidad</th><th>Costo/u</th><th>Venta/u</th><th>Ganancia bruta</th></tr>
+{% for m in movements %}
+<tr><td>{{ m.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+<td>{{ products|selectattr('id','equalto',m.product_id)|map(attribute='name')|first|default('Producto') }}</td>
+<td>{{ 'Entrada' if m.kind=='entry' else 'Venta' }}</td><td>{{ m.quantity }}</td>
+<td>{{ m.unit_cost }}</td><td>{{ m.unit_price if m.kind=='sale' else '—' }}</td>
+<td>{{ '%.2f'|format(m.quantity*(m.unit_price-m.unit_cost)) if m.kind=='sale' else '—' }}</td></tr>
+{% else %}<tr><td colspan="7">Sin movimientos.</td></tr>{% endfor %}
+</table>
+</div>
+</div>
+{% endblock %}

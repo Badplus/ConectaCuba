@@ -104,7 +104,7 @@ def register_routes(app):
  def ctx():
   s=Setting.query.first(); unread=0
   if current_user.is_authenticated: unread=Notification.query.filter_by(user_id=current_user.id,read=False).count()
-  return dict(can_manage_photo=can_manage_photo,product_photo_url=product_photo_url,MUNICIPIOS=MUNICIPIOS,PRODUCTOS=PRODUCTOS,OWNER_WHATSAPP=current_app.config['OWNER_WHATSAPP'],commission=s.commission if s else 0,unread=unread)
+  return dict(inventory_enabled=(current_user.is_authenticated and current_user.role=='admin_bodega' and current_user.approved and db.session.get(InventoryAccess,current_user.id) is not None),can_manage_photo=can_manage_photo,product_photo_url=product_photo_url,MUNICIPIOS=MUNICIPIOS,PRODUCTOS=PRODUCTOS,OWNER_WHATSAPP=current_app.config['OWNER_WHATSAPP'],commission=s.commission if s else 0,unread=unread)
 
  @app.route('/')
  def index():
@@ -663,7 +663,14 @@ def register_routes(app):
  @app.route('/inventory')
  @login_required
  def inventory():
-  owner_id=inventory_owner(int(request.args['owner']) if request.args.get('owner','').isdigit() else None)
+  requested_owner=int(request.args['owner']) if request.args.get('owner','').isdigit() else None
+  if current_user.is_admin and requested_owner is None:
+   first=User.query.filter_by(role='admin_bodega').order_by(User.full_name).first()
+   if not first:
+    flash('Todavía no existen administradores de bodega.','danger')
+    return redirect(url_for('admin'))
+   requested_owner=first.id
+  owner_id=inventory_owner(requested_owner)
   products=InventoryProduct.query.filter_by(owner_id=owner_id).order_by(InventoryProduct.name).all()
   movements=InventoryMovement.query.filter_by(owner_id=owner_id).order_by(InventoryMovement.created_at.desc(),InventoryMovement.id.desc()).limit(100).all()
   summary={'stock_value':sum((p.quantity*p.average_cost for p in products),Decimal('0')),

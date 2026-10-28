@@ -12,16 +12,16 @@
 <div class="card" style="overflow-x:auto">
 <h3>Ganancia por producto</h3>
 <table>
-<thead><tr><th>Producto</th><th>Unidad</th><th>Existencias</th><th>Valor existencias (CUP)</th><th>Cantidad vendida</th><th>Ingresos (CUP)</th><th>Costo vendido (CUP)</th><th>Ganancia bruta (CUP)</th></tr></thead>
+<thead><tr><th>Producto</th><th>Unidad</th><th>Existencias</th><th>Valor existencias (CUP)</th><th>Cantidad vendida</th><th>Costo vendido (CUP)</th><th>Ingresos (CUP)</th><th>Ganancia bruta (CUP)</th></tr></thead>
 <tbody>
 {% for row in rows %}
 <tr><td>{{ row.name }}</td><td>{{ row.unit }}</td><td>{{ row.stock }}</td>
 <td>{{ '%.2f'|format(row.stock_value) }}</td><td>{{ row.sold }}</td>
-<td>{{ '%.2f'|format(row.revenue) }}</td><td>{{ '%.2f'|format(row.cost) }}</td>
+<td>{{ '%.2f'|format(row.cost) }}</td><td>{{ '%.2f'|format(row.revenue) }}</td>
 <td><strong>{{ '%.2f'|format(row.profit) }}</strong></td></tr>
 {% else %}<tr><td colspan="8">Todavía no hay productos registrados.</td></tr>{% endfor %}
 </tbody>
-<tfoot><tr><th>TOTAL</th><th>—</th><th>—</th><th>{{ '%.2f'|format(summary.stock_value) }}</th><th>—</th><th>{{ '%.2f'|format(summary.revenue) }}</th><th>{{ '%.2f'|format(summary.cost) }}</th><th>{{ '%.2f'|format(summary.profit) }}</th></tr></tfoot>
+<tfoot><tr><th>TOTAL</th><th>—</th><th>—</th><th>{{ '%.2f'|format(summary.stock_value) }}</th><th>—</th><th>{{ '%.2f'|format(summary.cost) }}</th><th>{{ '%.2f'|format(summary.revenue) }}</th><th>{{ '%.2f'|format(summary.profit) }}</th></tr></tfoot>
 </table>
 </div>
 <p class="muted">Ganancia bruta = ingresos por ventas − costo de mercancía vendida. No incluye transporte, impuestos ni otros gastos.</p>

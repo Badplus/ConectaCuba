@@ -12,11 +12,12 @@ from datetime import timedelta
 from urllib.parse import quote
 from functools import wraps
 from datetime import datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from flask import render_template,request,redirect,url_for,flash,session,current_app,abort
 from flask_login import login_user,logout_user,login_required,current_user
 from sqlalchemy import or_,and_
 from . import db,MUNICIPIOS,PRODUCTOS
-from .models import User,Listing,Notification,Message,Setting,PasswordResetRequest,PushSubscription,InventoryAccess
+from .models import User,Listing,Notification,Message,Setting,PasswordResetRequest,PushSubscription,InventoryAccess,InventoryProduct,InventoryMovement
 from .push import send_push,push_configured,valid_subscription
 
 def approved_required(fn):
@@ -627,3 +628,100 @@ def register_routes(app):
   except (ValueError, KeyError): abort(400)
   if not (0 <= value <= 100): abort(400)
   s.commission=value; db.session.commit(); return redirect(url_for('admin'))
+
+ # Inventory operations: explicit permission, per-owner isolation and locked stock updates.
+ def inventory_owner(owner_id=None):
+  if not current_user.is_authenticated:
+   abort(401)
+  if current_user.is_admin:
+   if owner_id is None:
+    abort(400)
+   owner=db.session.get(User,owner_id)
+   if not owner or owner.role!='admin_bodega':
+    abort(404)
+   return owner.id
+  if (not current_user.approved or current_user.role!='admin_bodega'
+      or db.session.get(InventoryAccess,current_user.id) is None):
+   abort(403)
+  if owner_id is not None and owner_id!=current_user.id:
+   abort(403)
+  return current_user.id
+
+ def inventory_decimal(name,places,positive=False):
+  try:
+   raw=request.form.get(name,'').strip()
+   value=Decimal(raw)
+   if not value.is_finite() or value<0 or (positive and value<=0) or value>=Decimal('1000000000'):
+    raise ValueError()
+   quantum=Decimal('1').scaleb(-places)
+   if value!=value.quantize(quantum):
+    raise ValueError()
+   return value
+  except (InvalidOperation,ValueError,TypeError):
+   abort(400,description='Cantidad o importe no válido: '+name)
+
+ @app.route('/inventory')
+ @login_required
+ def inventory():
+  owner_id=inventory_owner(int(request.args['owner']) if request.args.get('owner','').isdigit() else None)
+  products=InventoryProduct.query.filter_by(owner_id=owner_id).order_by(InventoryProduct.name).all()
+  movements=InventoryMovement.query.filter_by(owner_id=owner_id).order_by(InventoryMovement.created_at.desc(),InventoryMovement.id.desc()).limit(100).all()
+  summary={'stock_value':sum((p.quantity*p.average_cost for p in products),Decimal('0')),
+           'revenue':sum((m.quantity*m.unit_price for m in movements if m.kind=='sale'),Decimal('0')),
+           'cost_sold':sum((m.quantity*m.unit_cost for m in movements if m.kind=='sale'),Decimal('0'))}
+  summary['gross_profit']=summary['revenue']-summary['cost_sold']
+  return render_template('inventory.html',products=products,movements=movements,summary=summary,
+                         owner_id=owner_id,owners=User.query.filter_by(role='admin_bodega').order_by(User.full_name).all() if current_user.is_admin else [],
+                         is_general_admin=current_user.is_admin)
+
+ @app.route('/inventory/product',methods=['POST'])
+ @login_required
+ def inventory_create_product():
+  owner_id=inventory_owner(int(request.form['owner_id']) if current_user.is_admin and request.form.get('owner_id','').isdigit() else None)
+  name=request.form.get('name','').strip()
+  unit=request.form.get('unit','').strip()
+  if not name or len(name)>120 or unit not in ('lb','kg','unidad','saco','caja','L'):
+   abort(400,description='Producto o unidad inválidos.')
+  if InventoryProduct.query.filter_by(owner_id=owner_id,name=name,unit=unit).first():
+   abort(400,description='Este producto ya existe en el inventario.')
+  price=inventory_decimal('sale_price',2)
+  db.session.add(InventoryProduct(owner_id=owner_id,name=name,unit=unit,sale_price=price))
+  db.session.commit()
+  flash('Producto incorporado al inventario.','success')
+  return redirect(url_for('inventory',owner=owner_id) if current_user.is_admin else url_for('inventory'))
+
+ @app.route('/inventory/product/<int:product_id>/movement',methods=['POST'])
+ @login_required
+ def inventory_record_movement(product_id):
+  # Lock product row to prevent concurrent sales from overselling stock.
+  product=InventoryProduct.query.filter_by(id=product_id).with_for_update().first()
+  if not product:
+   abort(404)
+  owner_id=inventory_owner(product.owner_id)
+  kind=request.form.get('kind')
+  if kind not in ('entry','sale'):
+   abort(400)
+  quantity=inventory_decimal('quantity',3,positive=True)
+  if kind=='entry':
+   cost=inventory_decimal('unit_cost',4)
+   price=inventory_decimal('unit_price',2)
+   total_cost=product.quantity*product.average_cost+quantity*cost
+   new_quantity=product.quantity+quantity
+   if new_quantity>=Decimal('1000000000'):
+    abort(400)
+   product.average_cost=(total_cost/new_quantity).quantize(Decimal('0.0001'),rounding=ROUND_HALF_UP)
+   product.quantity=new_quantity
+   product.sale_price=price
+   unit_price=None
+  else:
+   if product.quantity<quantity:
+    flash('No hay existencias suficientes para registrar esta venta.','danger')
+    return redirect(url_for('inventory',owner=owner_id) if current_user.is_admin else url_for('inventory'))
+   unit_price=inventory_decimal('unit_price',2)
+   cost=product.average_cost
+   product.quantity-=quantity
+  db.session.add(InventoryMovement(product_id=product.id,owner_id=owner_id,actor_id=current_user.id,
+                                   kind=kind,quantity=quantity,unit_cost=cost,unit_price=unit_price))
+  db.session.commit()
+  flash('Entrada registrada.' if kind=='entry' else 'Venta registrada y existencias actualizadas.','success')
+  return redirect(url_for('inventory',owner=owner_id) if current_user.is_admin else url_for('inventory'))

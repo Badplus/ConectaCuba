@@ -747,11 +747,11 @@ def register_routes(app):
   styles['Title'].fontName=font
   styles['Normal'].fontName=font
   def money(value): return f'{value:,.2f}'
-  cells=[['Producto','Unidad','Existencia','Valor stock CUP','Vendido','Ingreso CUP','Costo vendido CUP','Ganancia CUP']]
+  cells=[['Producto','Unidad','Existencia','Valor stock CUP','Vendido','Costo vendido CUP','Ingreso CUP','Ganancia CUP']]
   for row in rows:
    cells.append([Paragraph(escape(row['name']),styles['Normal']),row['unit'],str(row['stock']),
-                 money(row['stock_value']),str(row['sold']),money(row['revenue']),money(row['cost']),money(row['profit'])])
-  cells.append(['TOTAL','','',money(summary['stock_value']),'',money(summary['revenue']),money(summary['cost']),money(summary['profit'])])
+                 money(row['stock_value']),str(row['sold']),money(row['cost']),money(row['revenue']),money(row['profit'])])
+  cells.append(['TOTAL','','',money(summary['stock_value']),'',money(summary['cost']),money(summary['revenue']),money(summary['profit'])])
   table=LongTable(cells,colWidths=[63*mm,20*mm,23*mm,33*mm,23*mm,33*mm,38*mm,35*mm],repeatRows=1)
   table.setStyle(TableStyle([('FONTNAME',(0,0),(-1,-1),font),('FONTSIZE',(0,0),(-1,-1),8),
     ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#E6EDF5')),

@@ -1,5 +1,19 @@
 {% extends 'base.html' %}
-{% block title %}Inventario — Mercado BETO Plus{% endblock %}
+{% block title %}Inventario — Mercado BETO Plus<script>
+function filterInventoryProducts(value) {
+  const term = value.trim().toLocaleLowerCase();
+  let matches = 0;
+  document.querySelectorAll('.inventory-product-item').forEach(function (item) {
+    const visible = item.dataset.productName.includes(term);
+    item.hidden = !visible;
+    if (visible) matches++;
+    else item.querySelector('details').open = false;
+  });
+  const empty = document.getElementById('inventory-search-empty');
+  if (empty) empty.hidden = matches > 0 || !term;
+}
+</script>
+{% endblock %}
 {% block content %}
 <div class="container">
 <h2>Inventario y ganancias</h2>
@@ -21,7 +35,7 @@
 <p class="muted">La ganancia bruta no incluye transporte, impuestos ni otros gastos.</p>
 </div>
 <div class="card">
-<h3>Crear producto</h3>
+<details><summary style="cursor:pointer;font-weight:600">+ Crear producto nuevo</summary><div style="padding-top:12px">
 <form method="post" action="{{ url_for('inventory_create_product') }}">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
 {% if is_general_admin %}<input type="hidden" name="owner_id" value="{{ owner_id }}">{% endif %}
@@ -31,11 +45,17 @@
 <label>Precio de venta sugerido (CUP)</label><input type="number" name="sale_price" min="0" step="0.01" required>
 <button class="btn primary" type="submit">Crear producto</button>
 </form>
+</div></details>
 </div>
-<h3>Existencias y movimientos</h3>
+<h3>Productos del inventario</h3>
+<label for="inventory-search">Buscar producto por nombre</label>
+<input id="inventory-search" type="search" placeholder="Escribe el nombre del producto..." autocomplete="off" oninput="filterInventoryProducts(this.value)">
+<p id="inventory-search-empty" class="muted" hidden>No hay productos que coincidan con la búsqueda.</p>
 {% for p in products %}
-<div class="card">
-<h3>{{ p.name }}</h3>
+<div class="card inventory-product-item" data-product-name="{{ p.name|lower|e }}">
+<details name="inventory-product">
+<summary style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><strong>{{ p.name }}</strong><span>{{ p.quantity }} {{ p.unit }} · Venta: {{ p.sale_price }} CUP</span></summary>
+<div style="padding-top:14px">
 <p>Existencias: <b>{{ p.quantity }} {{ p.unit }}</b> · Costo promedio: {{ p.average_cost }} CUP · Precio de venta: {{ p.sale_price }} CUP · Ganancia unitaria estimada: {{ "%.2f"|format(p.sale_price - p.average_cost) }} CUP</p>
 <div style="display:flex;gap:20px;flex-wrap:wrap">
 <form method="post" action="{{ url_for('inventory_record_movement',product_id=p.id) }}">
@@ -56,6 +76,8 @@
 <button class="btn secondary" type="submit">Registrar venta</button>
 </form>
 </div>
+</div>
+</details>
 </div>
 {% else %}
 <div class="card">Todavía no hay productos en este inventario.</div>

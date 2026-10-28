@@ -20,56 +20,75 @@
 </form>
 </div>
 
-<div class="card" style="overflow-x:auto;padding:12px">
+<div class="card admin-users-card">
 <h3>Usuarios</h3>
 <style>
-.admin-users-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:auto}
-.admin-users-table th,.admin-users-table td{padding:6px 5px;vertical-align:middle;white-space:nowrap}
-.admin-users-table .role-select{width:135px;max-width:135px;padding:5px;font-size:12px}
-.admin-users-table .btn{padding:5px 7px;font-size:11px;white-space:nowrap}
+.admin-users-card{padding:16px}
+.admin-users-scroll{overflow-x:auto}
+.admin-users-table{width:100%;border-collapse:collapse;font-size:13px;table-layout:auto}
+.admin-users-table th,.admin-users-table td{padding:9px 8px;text-align:left;vertical-align:middle;border-bottom:1px solid #e7e9ed}
+.admin-users-table th{white-space:nowrap}
 .admin-users-table form{margin:0}
+.admin-users-table select.role-select{box-sizing:border-box;width:172px;min-width:0;max-width:172px;display:inline-block;margin:0;padding:7px 24px 7px 8px;font-size:12px}
+.admin-users-table .btn{padding:6px 9px;font-size:12px;white-space:nowrap;margin:0}
+.admin-users-table .user-name{font-weight:600}
+.admin-users-table .user-location{display:block;font-size:11px;color:#697586;margin-top:3px}
+.admin-users-table .user-phone{white-space:nowrap}
+@media(max-width:720px){.admin-users-table{min-width:690px}.admin-users-card{padding:12px}}
 </style>
+<div class="admin-users-scroll">
 <table class="admin-users-table">
-<tr>
-<th>Nombre</th>
-<th>Teléfono</th>
-<th>Rol</th>
-<th>Provincia</th>
-<th>Municipio</th>
-<th>Estado</th>
-<th>Acceso</th>
-<th>Acción</th>
-<th>Inventario</th>
-<th>Eliminar</th>
-</tr>
-
+<thead><tr>
+<th>Usuario</th><th>Teléfono</th><th>Rol</th><th>Estado</th><th>Acción</th><th>Inventario</th><th>Eliminar</th>
+</tr></thead>
+<tbody>
 {% for u in users %}
 <tr>
-<td>{{u.full_name}}</td>
-<td>{{u.phone}}</td>
+<td><span class="user-name">{{ u.full_name }}</span><span class="user-location">{{ u.municipality }}, {{ u.province }}</span></td>
+<td class="user-phone">{{ u.phone }}</td>
 <td>
 {% if not u.is_admin and current_user.is_authenticated and current_user.is_admin %}
 <form method="post" action="{{ url_for('admin_change_user_role',user_id=u.id) }}">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-<select name="role" aria-label="Nuevo rol para {{ u.full_name }}">
+<select class="role-select" name="role" aria-label="Rol de {{ u.full_name }}" onchange="if(confirm('¿Cambiar el rol de este usuario?')) this.form.requestSubmit(); else this.value=this.dataset.previous;" onfocus="this.dataset.previous=this.value">
 <option value="comprador" {% if u.role=='comprador' %}selected{% endif %}>Comprador</option>
 <option value="vendedor" {% if u.role=='vendedor' %}selected{% endif %}>Vendedor</option>
 <option value="admin_bodega" {% if u.role=='admin_bodega' %}selected{% endif %}>Administrador de bodega</option>
 </select>
-<button class="btn secondary" type="submit">Guardar rol</button>
 </form>
-{% else %}<span class="muted">Protegido</span>{% endif %}
+{% else %}<span class="pill">Administrador general</span>{% endif %}
+</td>
+<td>{{ 'Activa' if u.approved else 'Pendiente' }}</td>
+<td>
+{% if u.is_admin %}<span class="muted">Protegida</span>
+{% else %}
+<form method="post" action="{{ url_for('admin_toggle',user_id=u.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<button class="btn {{ 'danger' if u.approved else 'primary' }}" type="submit">{{ 'Desactivar' if u.approved else 'Activar' }}</button>
+</form>
+{% endif %}
+</td>
+<td>
+{% if u.role=='admin_bodega' and not u.is_admin %}
+{% if current_user.is_authenticated and current_user.is_admin %}
+<form method="post" action="{{ url_for('admin_inventory_access_toggle',user_id=u.id) }}">
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<button class="btn secondary" type="submit" {% if not u.approved and u.id not in inventory_access_ids %}disabled{% endif %}>{{ 'Retirar permiso' if u.id in inventory_access_ids else 'Autorizar' }}</button>
+</form>
+{% else %}{{ 'Autorizado' if u.id in inventory_access_ids else 'Sin acceso' }}{% endif %}
+{% else %}—{% endif %}
 </td>
 <td>
 {% if not u.is_admin and current_user.is_authenticated and current_user.is_admin %}
-<form method="post" action="{{ url_for('admin_delete_user',user_id=u.id) }}" onsubmit="return confirm('¿Eliminar definitivamente la cuenta de {{ u.full_name|e }}? Se borrarán sus publicaciones y conversaciones. Esta operación no se puede deshacer.')">
+<form method="post" action="{{ url_for('admin_delete_user',user_id=u.id) }}" onsubmit="return confirm('¿Eliminar definitivamente esta cuenta? Se borrarán sus publicaciones y conversaciones. Esta operación no se puede deshacer.')">
 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-<button class="btn danger" type="submit">Eliminar cuenta</button>
+<button class="btn danger" type="submit">Eliminar</button>
 </form>
 {% else %}<span class="muted">Protegida</span>{% endif %}
 </td>
 </tr>
 {% endfor %}
+</tbody>
 </table>
 </div>
 </div>

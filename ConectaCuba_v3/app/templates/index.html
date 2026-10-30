@@ -1,37 +1,25 @@
 {% extends 'base.html' %}
-{% block title %}Mercado BETO Plus — Tu bodega de barrio, más cerca de ti{% endblock %}
+{% block title %}Mercado BETO Plus — Productos de tu barrio{% endblock %}
 {% block content %}
-<section class="hero"><div class="container">
-  <h1>Mercado BETO Plus</h1>
-  <p><strong>Tu bodega de barrio, más cerca de ti.</strong></p>
-  <p>Un espacio digital donde las bodegas y vendedores independientes pueden ofrecer sus productos, llegar a más clientes y crecer juntos.</p>
-  <p>¡Tu bodega también puede ser parte de este proyecto!</p>
-</div></section>
+<style>
+.market-categories{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:18px 0}.market-category{display:flex;align-items:center;justify-content:center;gap:8px;text-align:center;padding:15px 8px;border:1px solid #dce7df;border-radius:14px;background:#fff;color:#214d37;text-decoration:none;font-weight:700}.market-category.active{background:#17623c;color:white;border-color:#17623c}.market-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(225px,1fr));gap:18px;margin:20px 0 35px}.market-product{display:block;overflow:hidden;background:white;border:1px solid #e1e8e2;border-radius:15px;text-decoration:none;color:inherit;box-shadow:0 4px 14px #102c1810;transition:transform .15s}.market-product:hover{transform:translateY(-3px)}.market-photo{width:100%;height:195px;object-fit:cover;display:block;background:#f0f4f0}.market-photo-empty{height:195px;display:flex;align-items:center;justify-content:center;background:#eff4ef;color:#587565;font-size:45px}.market-info{padding:13px}.market-title{font-size:1.06rem;font-weight:700;color:#183f2c;margin:0 0 7px}.market-price{font-size:1.35rem;font-weight:800;color:#17623c;margin:7px 0}.market-meta{font-size:.88rem;color:#59675d;margin:4px 0;overflow-wrap:anywhere}.market-tag{display:inline-block;background:#e7f3e9;color:#17623c;padding:3px 9px;border-radius:20px;font-size:.76rem;font-weight:700}@media(max-width:650px){.market-categories{grid-template-columns:repeat(2,minmax(0,1fr))}.market-categories a:first-child{grid-column:span 2}.market-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.market-photo,.market-photo-empty{height:145px}.market-info{padding:10px}.market-title{font-size:.94rem}.market-price{font-size:1.1rem}}
+</style>
+<section class="hero"><div class="container"><h1>Mercado BETO Plus</h1><p><strong>Tu bodega de barrio, más cerca de ti.</strong></p><p>Explora productos de tu comunidad y habla directamente con quien los vende.</p></div></section>
 <div class="container">
-  <div class="card">
-    <form class="filters" method="get" action="{{ url_for('index') }}">
-      <input type="search" name="q" value="{{ q }}" placeholder="Buscar productos" aria-label="Buscar productos">
-      <select name="municipality" aria-label="Filtrar por municipio">
-        <option value="">Todos los municipios</option>
-        {% for m in MUNICIPIOS %}<option value="{{ m }}" {% if muni == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
-      </select>
-      <button class="btn primary" type="submit">Buscar</button>
-    </form>
-  </div>
-  <h2>Productos en venta</h2>
-  <div class="list">
-    {% set ns = namespace(count=0) %}
-    {% for x in listings %}
-      {% if x.kind == 'oferta' %}
-        {% set ns.count = ns.count + 1 %}
-        <a class="row" href="{{ url_for('detail', listing_id=x.id) }}">
-          {% if x.photo_path %}<img src="{{ product_photo_url(x.photo_path) }}" alt="Foto de {{ x.display_product }}" loading="lazy" style="width:90px;height:90px;object-fit:cover;border-radius:8px;margin-right:12px">{% endif %}
-          <div><span class="pill offer">VENTA</span> <b>{{ x.display_product }}</b>
-          <div class="muted">{{ x.quantity }} {{ x.unit }} · {{ '%.2f'|format(x.price) }} CUP · {{ x.municipality }}</div></div>
-        </a>
-      {% endif %}
+  <nav class="market-categories" aria-label="Categorías de productos">
+    {% for name, icon in [('', '🛍️'), ('Alimentos', '🥬'), ('Bebidas', '🥤'), ('Higiene', '🧼'), ('Hogar', '🏠')] %}
+      <a class="market-category {{ 'active' if category == name else '' }}" href="{{ url_for('index', category=name, q=q, municipality=muni) }}" {% if category == name %}aria-current="page"{% endif %}>{{ icon }} {{ name or 'Todos los productos' }}</a>
     {% endfor %}
-    {% if ns.count == 0 %}<div class="card">Todavía no hay productos publicados. ¡Vuelve pronto!</div>{% endif %}
+  </nav>
+  <div class="card"><form class="filters" method="get" action="{{ url_for('index') }}"><input type="hidden" name="category" value="{{ category }}"><input type="search" name="q" value="{{ q }}" placeholder="Buscar productos" aria-label="Buscar productos"><select name="municipality" aria-label="Filtrar por municipio"><option value="">Todos los municipios</option>{% for m in MUNICIPIOS %}<option value="{{ m }}" {% if muni == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select><button class="btn primary" type="submit">Buscar</button></form></div>
+  <h2>{{ category if category else 'Productos en venta' }}</h2>
+  <div class="market-grid">
+  {% for x in listings %}
+    <a class="market-product" href="{{ url_for('detail', listing_id=x.id) }}" aria-label="Ver {{ x.display_product }} vendido por {{ x.owner.full_name }}">
+      {% if x.photo_path %}<img class="market-photo" src="{{ product_photo_url(x.photo_path) }}" alt="Foto de {{ x.display_product }}" loading="lazy">{% else %}<div class="market-photo-empty" aria-label="Producto sin fotografía">🛍️</div>{% endif %}
+      <div class="market-info"><span class="market-tag">{{ market_category(x) }}</span><p class="market-title">{{ x.display_product }}</p><p class="market-price">{{ '%.2f'|format(x.price) }} CUP</p><p class="market-meta"><strong>Cantidad:</strong> {{ x.quantity }} {{ x.unit }}</p><p class="market-meta"><strong>Vendedor:</strong> {{ x.owner.full_name }}</p><p class="market-meta"><strong>Municipio:</strong> {{ x.municipality }}</p><p class="market-meta"><strong>Provincia:</strong> {{ x.province }}</p><p class="market-meta">Ver detalles y contactar →</p></div>
+    </a>
+  {% else %}<div class="card">No hay productos disponibles con estos filtros.</div>{% endfor %}
   </div>
 </div>
 {% endblock %}

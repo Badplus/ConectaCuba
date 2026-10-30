@@ -5,6 +5,26 @@
     <p class="muted">Mercado BETO Plus · Detalle del producto</p>
     <span class="pill {{ 'offer' if listing.kind == 'oferta' else 'demand' }}">{{ 'EN VENTA' if listing.kind == 'oferta' else 'DEMANDA ANTIGUA' }}</span>
     <h1>{{ listing.display_product }}</h1>
+    {% if not listing.active %}<p class="muted"><strong>Publicación retirada del mercado.</strong> Solo los usuarios autorizados pueden verla.</p>{% endif %}
+    {% if current_user.is_authenticated and (current_user.is_admin or (current_user.approved and current_user.role in ['admin_bodega', 'vendedor'] and current_user.id == listing.owner_id)) %}
+    <section aria-label="Gestionar esta publicación" style="margin:22px 0;padding:16px;border:1px solid #d8e5db;border-radius:12px;background:#f5faf6">
+      <h2 style="margin-top:0">Gestionar esta publicación</h2>
+      <p class="muted">{{ 'Puedes administrar cualquier publicación del mercado.' if current_user.is_admin else 'Esta publicación te pertenece.' }}</p>
+      <div style="display:flex;flex-wrap:wrap;gap:9px;align-items:center">
+        <a class="btn secondary" href="{{ url_for('edit_listing', listing_id=listing.id) }}">Editar publicación</a>
+        <form method="post" action="{{ url_for('moderate_listing', listing_id=listing.id) }}" style="display:inline" onsubmit="return confirm('{{ '¿Retirar esta publicación del mercado?' if listing.active else '¿Volver a mostrar esta publicación en el mercado?' }}')">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="{{ 'deactivate' if listing.active else 'reactivate' }}">
+          <button class="btn secondary" type="submit">{{ 'Retirar del mercado' if listing.active else 'Reactivar publicación' }}</button>
+        </form>
+        <form method="post" action="{{ url_for('delete_listing', listing_id=listing.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar definitivamente esta publicación? Esta acción no se puede deshacer.')">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button class="btn danger" type="submit">Eliminar publicación</button>
+        </form>
+      </div>
+    </section>
+    {% endif %}
+
     {% if listing.photo_path %}<img src="{{ product_photo_url(listing.photo_path) }}" alt="Foto de {{ listing.display_product }}" loading="lazy" style="max-width:100%;max-height:420px;object-fit:contain;border-radius:10px">{% endif %}
     {% if can_manage_photo(listing) %}<p><a class="btn secondary" href="{{ url_for('upload_product_photo', listing_id=listing.id) }}">{{ 'Cambiar fotografía' if listing.photo_path else 'Añadir fotografía' }}</a></p>{% endif %}
     <p><strong>Precio:</strong> {{ '%.2f'|format(listing.price) }} CUP/{{ listing.unit }}</p>

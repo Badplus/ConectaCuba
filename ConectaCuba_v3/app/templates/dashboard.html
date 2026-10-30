@@ -42,6 +42,7 @@
               <input type="hidden" name="action" value="{{ 'deactivate' if x.active else 'reactivate' }}">
               <button class="btn secondary" type="submit">{{ 'Retirar' if x.active else 'Reactivar' }}</button>
             </form>
+            <form method="post" action="{{ url_for('delete_listing', listing_id=x.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar definitivamente esta publicación? Esta acción no se puede deshacer.')"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="btn danger" type="submit">Eliminar</button></form>
           </div>
         </div>
       {% else %}

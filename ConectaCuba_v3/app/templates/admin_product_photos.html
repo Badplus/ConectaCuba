@@ -1,8 +1,13 @@
 {% extends 'base.html' %}
-{% block title %}Fotografías de productos | Mercado BETO Plus{% endblock %}
+{% block title %}Gestionar publicaciones | Mercado BETO Plus{% endblock %}
 {% block content %}
-<div class="container"><h2>Moderación de publicaciones</h2>
-<p>Como administrador general puedes añadir o sustituir una fotografía por producto.</p>
-<div class="list">{% for x in products %}<div class="row"><div><b>{{ x.display_product }}</b><div class="muted">{{ x.owner.full_name }} · {{ x.municipality }} · {{ 'Activa' if x.active else 'Retirada' }}</div></div><a class="btn secondary" href="{{ url_for('upload_product_photo', listing_id=x.id) }}">{{ 'Cambiar foto' if x.photo_path else 'Añadir foto' }}</a> <a href="{{ url_for('edit_listing', listing_id=x.id) }}">Editar</a><form method="post" action="{{ url_for('moderate_listing', listing_id=x.id) }}" onsubmit="return confirm('¿Confirmar cambio?')"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="{{ 'deactivate' if x.active else 'reactivate' }}"><button class="btn secondary">{{ 'Retirar' if x.active else 'Reactivar' }}</button></form></div>{% else %}<p>No hay productos.</p>{% endfor %}</div>
-</div>
+<div class="container"><h2>Gestionar publicaciones del mercado</h2><p>Como administrador general puedes editar, retirar, reactivar o eliminar publicaciones de cualquier vendedor o administrador de bodega.</p>
+<div class="list">{% for x in products %}
+<div class="row" style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
+{% if x.photo_path %}<img src="{{ product_photo_url(x.photo_path) }}" alt="Foto de {{ x.display_product }}" loading="lazy" style="width:78px;height:78px;object-fit:cover;border-radius:8px">{% endif %}
+<div style="flex:1;min-width:170px"><b>{{ x.display_product }}</b><div class="muted">{{ x.owner.full_name }} · {{ x.municipality }} · {{ '%.2f'|format(x.price) }} CUP · {{ 'Activa' if x.active else 'Retirada' }}</div></div>
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:7px"><a class="btn secondary" href="{{ url_for('upload_product_photo', listing_id=x.id) }}">{{ 'Cambiar foto' if x.photo_path else 'Añadir foto' }}</a><a class="btn secondary" href="{{ url_for('edit_listing', listing_id=x.id) }}">Editar</a>
+<form method="post" action="{{ url_for('moderate_listing', listing_id=x.id) }}" style="display:inline" onsubmit="return confirm('¿Confirmar el cambio de visibilidad?')"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><input type="hidden" name="action" value="{{ 'deactivate' if x.active else 'reactivate' }}"><button class="btn secondary" type="submit">{{ 'Retirar del mercado' if x.active else 'Reactivar' }}</button></form>
+<form method="post" action="{{ url_for('delete_listing', listing_id=x.id) }}" style="display:inline" onsubmit="return confirm('¿Eliminar definitivamente esta publicación? No se puede deshacer.')"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="btn danger" type="submit">Eliminar</button></form></div>
+</div>{% else %}<p>No hay publicaciones.</p>{% endfor %}</div></div>
 {% endblock %}

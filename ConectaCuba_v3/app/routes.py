@@ -487,7 +487,8 @@ def register_routes(app):
  @app.route('/listing/<int:listing_id>')
  def detail(listing_id):
   item=db.session.get(Listing,listing_id)
-  if not item or not item.active or not item.owner.approved: abort(404)
+  if not item: abort(404)
+  if (not item.active or not item.owner.approved) and not can_edit_listing(item): abort(404)
   return render_template('detail.html',listing=item)
 
  @app.route('/sw.js')

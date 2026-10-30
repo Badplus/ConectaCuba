@@ -9,7 +9,11 @@
     {% if can_manage_photo(listing) %}<p><a class="btn secondary" href="{{ url_for('upload_product_photo', listing_id=listing.id) }}">{{ 'Cambiar fotografía' if listing.photo_path else 'Añadir fotografía' }}</a></p>{% endif %}
     <p><strong>Precio:</strong> {{ '%.2f'|format(listing.price) }} CUP/{{ listing.unit }}</p>
     <p><strong>Cantidad:</strong> {{ listing.quantity }} {{ listing.unit }}</p>
+    <p><strong>Categoría:</strong> {{ market_category(listing) }}</p>
     <p><strong>Municipio:</strong> {{ listing.municipality }}</p>
+    <p><strong>Provincia:</strong> {{ listing.province }}</p>
+    <p><strong>Vendedor:</strong> {{ listing.owner.full_name }}</p>
+    <p><strong>Ubicación del vendedor:</strong> {{ listing.owner.municipality }}, {{ listing.owner.province }}</p>
     {% if listing.description %}
       <h3>Descripción</h3>
       <p>{{ listing.description }}</p>

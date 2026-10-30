@@ -99,21 +99,37 @@ def storage_request(method, path, payload=None, content_type=None):
  with urlopen(req,timeout=20) as response:
   return response.status
 
+
+# Categorías de visualización: no requieren migrar publicaciones existentes.
+MARKET_CATEGORIES = ('Alimentos', 'Bebidas', 'Higiene', 'Hogar')
+def market_category(listing):
+ name = norm(product_name(listing))
+ beverages = ('agua', 'refresco', 'jugo', 'zumo', 'cafe', 'café', 'te ', 'té ', 'cerveza', 'malta', 'bebida', 'batido')
+ hygiene = ('jabon', 'jabón', 'champu', 'champú', 'shampoo', 'detergente', 'pasta dental', 'cepillo dental', 'desodorante', 'papel higienico', 'papel higiénico', 'aseo', 'higiene', 'lejia', 'lejía')
+ home = ('escoba', 'cubeta', 'cubo', 'frazada', 'sarten', 'sartén', 'olla', 'plato', 'vaso', 'cuchara', 'hogar', 'bombillo', 'lampara', 'lámpara', 'colchon', 'colchón')
+ if any(term in name for term in beverages): return 'Bebidas'
+ if any(term in name for term in hygiene): return 'Higiene'
+ if any(term in name for term in home): return 'Hogar'
+ return 'Alimentos'
+
 def register_routes(app):
  @app.context_processor
  def ctx():
   s=Setting.query.first(); unread=0
   if current_user.is_authenticated: unread=Notification.query.filter_by(user_id=current_user.id,read=False).count()
-  return dict(inventory_enabled=(current_user.is_authenticated and current_user.role=='admin_bodega' and current_user.approved and db.session.get(InventoryAccess,current_user.id) is not None),can_manage_photo=can_manage_photo,product_photo_url=product_photo_url,MUNICIPIOS=MUNICIPIOS,PRODUCTOS=PRODUCTOS,OWNER_WHATSAPP=current_app.config['OWNER_WHATSAPP'],commission=s.commission if s else 0,unread=unread)
+  return dict(inventory_enabled=(current_user.is_authenticated and current_user.role=='admin_bodega' and current_user.approved and db.session.get(InventoryAccess,current_user.id) is not None),can_manage_photo=can_manage_photo,product_photo_url=product_photo_url,MUNICIPIOS=MUNICIPIOS,PRODUCTOS=PRODUCTOS,market_category=market_category,MARKET_CATEGORIES=MARKET_CATEGORIES,OWNER_WHATSAPP=current_app.config['OWNER_WHATSAPP'],commission=s.commission if s else 0,unread=unread)
 
  @app.route('/')
  def index():
-  q=request.args.get('q','').strip(); kind=request.args.get('kind',''); muni=request.args.get('municipality','')
+  q=request.args.get('q','').strip(); kind=request.args.get('kind',''); muni=request.args.get('municipality',''); category=request.args.get('category','').strip()
   qry=Listing.query.join(User).filter(Listing.active.is_(True),User.approved.is_(True))
   if q: qry=qry.filter(or_(Listing.product.ilike(f'%{q}%'),Listing.custom_product.ilike(f'%{q}%')))
   qry=qry.filter(Listing.kind=='oferta')
   if muni in MUNICIPIOS: qry=qry.filter(Listing.municipality==muni)
-  return render_template('index.html',listings=qry.order_by(Listing.created_at.desc()).all(),q=q,kind=kind,muni=muni)
+  listings=qry.order_by(Listing.created_at.desc()).all()
+  if category in MARKET_CATEGORIES: listings=[x for x in listings if market_category(x)==category]
+  else: category=''
+  return render_template('index.html',listings=listings,q=q,kind=kind,muni=muni,category=category)
 
  @app.route('/register',methods=['GET','POST'])
  def register():

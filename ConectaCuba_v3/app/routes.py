@@ -396,6 +396,26 @@ def register_routes(app):
   flash('Publicación reactivada.' if item.active else 'Publicación retirada del mercado.','success')
   return redirect(url_for('admin_products_photos') if current_user.is_admin else url_for('dashboard'))
 
+ @app.route('/listing/<int:listing_id>/delete',methods=['POST'])
+ @login_required
+ def delete_listing(listing_id):
+  item=db.session.get(Listing,listing_id)
+  if not item: abort(404)
+  if not can_edit_listing(item): abort(403)
+  # Preserve chat messages and inventory accounting; clear references to the deleted listing.
+  Notification.query.filter_by(listing_id=item.id).delete(synchronize_session=False)
+  for column in ('context_listing_a_id','context_listing_b_id'):
+   Notification.query.filter(getattr(Notification,column)==item.id).update({getattr(Notification,column):None},synchronize_session=False)
+   Message.query.filter(getattr(Message,column)==item.id).update({getattr(Message,column):None},synchronize_session=False)
+  photo_path=item.photo_path
+  db.session.delete(item)
+  db.session.commit()
+  if photo_path:
+   try: storage_request('DELETE',photo_path)
+   except Exception: current_app.logger.warning('No se pudo borrar foto de publicación eliminada %s',listing_id)
+  flash('Publicación eliminada definitivamente.','success')
+  return redirect(url_for('admin_products_photos') if current_user.is_admin else url_for('dashboard'))
+
  @app.route('/matches/<int:listing_id>')
  @login_required
  @approved_required
